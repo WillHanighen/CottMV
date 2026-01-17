@@ -1,0 +1,35 @@
+{
+  "name": "cottmv",
+  "version": "0.1.0",
+  "description": "A beginner-friendly home media vault - simple video streaming and management",
+  "module": "src/server/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "npx convex dev --once && bun build:css --once && bun run --watch src/server/index.ts",
+    "build": "bun build src/server/index.ts --outdir dist --target bun",
+    "build:css": "bunx tailwindcss -i ./public/css/input.css -o ./public/static/css/output.css --minify",
+    "build:css:watch": "bunx tailwindcss -i ./public/css/input.css -o ./public/static/css/output.css --watch",
+    "start": "bun run dist/index.js",
+    "convex:dev": "npx convex dev",
+    "convex:deploy": "npx convex deploy",
+    "convex:init": "npx convex dev --once",
+    "db:push": "npx convex deploy",
+    "cleanup": "bun run scripts/cleanup.ts",
+    "setup": "bun install && npm run convex:init && bun run build:css"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.700.0",
+    "@aws-sdk/s3-request-presigner": "^3.700.0",
+    "baseline-browser-mapping": "^2.9.15",
+    "caniuse-lite": "^1.0.30001764",
+    "convex": "^1.31.4",
+    "hono": "^4.6.0",
+    "nanoid": "^5.0.9"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.7.0"
+  }
+}
