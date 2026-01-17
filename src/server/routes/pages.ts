@@ -550,17 +550,19 @@ pageRoutes.get("/watch/:id", async (c) => {
                   <div class="flex items-center justify-center p-4 bg-gray-900 min-h-[300px]">
                     <img src="/api/stream/${id}" 
                          alt="${media.title}" 
-                         class="max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg cursor-zoom-in"
+                         class="w-auto h-auto object-contain rounded-lg shadow-lg cursor-zoom-in"
                          onclick="toggleFullscreen(this)"
-                         loading="lazy">
+                         loading="lazy"
+                         style="max-width: min(90%, 800px); max-height: 70vh;">
                   </div>
                 ` : isGif ? `
                   <div class="flex items-center justify-center p-4 bg-gray-900 min-h-[300px]">
                     <img src="/api/stream/${id}" 
                          alt="${media.title}" 
-                         class="max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg cursor-zoom-in"
+                         class="w-auto h-auto object-contain rounded-lg shadow-lg cursor-zoom-in"
                          onclick="toggleFullscreen(this)"
-                         loading="lazy">
+                         loading="lazy"
+                         style="max-width: min(90%, 800px); max-height: 70vh;">
                   </div>
                 ` : isDocument ? `
                   <div class="flex flex-col items-center justify-center p-8 bg-gradient-to-br from-gray-800 to-gray-900 min-h-[400px]">
