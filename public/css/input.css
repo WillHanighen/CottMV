@@ -91,6 +91,15 @@
  */
 
 @layer utilities {
+  /* NSFW blur effect */
+  .blur-xl {
+    filter: blur(24px);
+  }
+  
+  .blur-none {
+    filter: blur(0);
+  }
+  
   /* Text truncation with ellipsis */
   .truncate-2 {
     display: -webkit-box;

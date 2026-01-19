@@ -19,7 +19,8 @@ import { Hono } from "hono";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../convex/_generated/api.js";
 import { readdir, stat } from "fs/promises";
-import { join, extname, basename } from "path";
+import { join, extname, basename, dirname } from "path";
+import { mkdir } from "fs/promises";
 import { getVideoMetadata, generateThumbnail } from "../../media/transcoder.js";
 import {
   getMediaType,
@@ -232,6 +233,25 @@ mediaRoutes.post("/", async (c) => {
       }
     }
     
+    // Generate thumbnail for videos
+    let thumbnailPath: string | undefined;
+    if (mediaType === "video") {
+      try {
+        const convexClient = c.get("convex") as ConvexHttpClient;
+        const thumbnailDirSetting = await convexClient.query(api.settings.get, { key: "thumbnail_directory" }) || "~/.CottMV/thumbnails";
+        const thumbnailDir = expandPath(thumbnailDirSetting);
+        
+        // Ensure thumbnail directory exists
+        await mkdir(thumbnailDir, { recursive: true });
+        
+        const thumbnailFilename = `${basename(filepath, extname(filepath))}_thumb.jpg`;
+        thumbnailPath = join(thumbnailDir, thumbnailFilename);
+        await generateThumbnail(filepath, thumbnailPath);
+      } catch (err) {
+        console.warn(`Failed to generate thumbnail for ${filepath}:`, err);
+      }
+    }
+    
     // Create the media record
     const mediaId = await convex.mutation(api.media.create, {
       title: title || parsed.title,
@@ -242,6 +262,7 @@ mediaRoutes.post("/", async (c) => {
       mediaType,
       size: fileStats.size,
       duration,
+      thumbnail: thumbnailPath,
       year: parsed.year,
       artist: parsed.artist,
       album: parsed.album,
@@ -359,17 +380,45 @@ mediaRoutes.post("/scan", async (c) => {
     
     // Add new files
     let added = 0;
+    let existing = 0;
+    let failed = 0;
+    
+    // Get thumbnail directory from settings or use media directory
+    const thumbnailDirSetting = await convex.query(api.settings.get, { key: "thumbnail_directory" }) || "~/.CottMV/thumbnails";
+    let thumbnailDir = expandPath(thumbnailDirSetting);
+    
+    // If using default, store thumbnails in media directory for easier access
+    if (thumbnailDirSetting === "~/.CottMV/thumbnails") {
+      thumbnailDir = join(mediaDir, "thumbnails");
+    }
+    
+    // Ensure thumbnail directory exists
+    await mkdir(thumbnailDir, { recursive: true });
+    
     for (const file of files) {
       if (!existingPaths.has(file.path)) {
         try {
           // Get video/audio metadata
           let duration: number | undefined;
+          let thumbnailPath: string | undefined;
+          
           if (file.mediaType === "video" || file.mediaType === "audio") {
             try {
               const metadata = await getVideoMetadata(file.path);
               duration = metadata.duration;
             } catch {
               // Continue without duration
+            }
+          }
+          
+          // Generate thumbnail for videos
+          if (file.mediaType === "video") {
+            try {
+              const thumbnailFilename = `${basename(file.path, extname(file.path))}_thumb.jpg`;
+              thumbnailPath = join(thumbnailDir, thumbnailFilename);
+              await generateThumbnail(file.path, thumbnailPath);
+            } catch (err) {
+              console.warn(`Failed to generate thumbnail for ${file.path}:`, err);
             }
           }
           
@@ -385,6 +434,7 @@ mediaRoutes.post("/scan", async (c) => {
             mediaType: file.mediaType,
             size: file.size,
             duration,
+            thumbnail: thumbnailPath,
             year: parsed.year,
             artist: parsed.artist,
             album: parsed.album,
@@ -392,7 +442,10 @@ mediaRoutes.post("/scan", async (c) => {
           added++;
         } catch (err) {
           console.error(`Failed to add ${file.path}:`, err);
+          failed++;
         }
+      } else {
+        existing++;
       }
     }
     
@@ -401,7 +454,9 @@ mediaRoutes.post("/scan", async (c) => {
       data: {
         scanned: files.length,
         added,
-        skipped: files.length - added,
+        existing,
+        failed,
+        skipped: existing + failed,
       },
     });
   } catch (error) {
@@ -443,6 +498,10 @@ async function scanDirectory(dir: string): Promise<Array<{
       const fullPath = join(dir, entry.name);
       
       if (entry.isDirectory()) {
+        // Skip thumbnail directories to avoid adding thumbnails as media
+        if (entry.name === "thumbnails" || entry.name === ".thumbnails" || entry.name === "cache" || entry.name === ".cache") {
+          continue;
+        }
         // Recursively scan subdirectories
         const subResults = await scanDirectory(fullPath);
         results.push(...subResults);

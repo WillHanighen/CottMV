@@ -94,13 +94,14 @@ tagsRoutes.get("/:id", async (c) => {
  * Request Body:
  * - name: Tag name (required)
  * - color: Hex color code (optional)
+ * - isNsfw: Whether this tag marks content as NSFW (optional)
  */
 tagsRoutes.post("/", async (c) => {
   try {
     const convex = c.get("convex");
     const body = await c.req.json();
     
-    const { name, color } = body;
+    const { name, color, isNsfw } = body;
     
     if (!name || typeof name !== "string" || name.trim().length === 0) {
       return c.json({
@@ -120,6 +121,7 @@ tagsRoutes.post("/", async (c) => {
     const tagId = await convex.mutation(api.tags.create, {
       name: name.trim(),
       color: color || undefined,
+      isNsfw: isNsfw || false,
     });
     
     return c.json({
@@ -144,6 +146,7 @@ tagsRoutes.post("/", async (c) => {
  * Request Body:
  * - name: New tag name (optional)
  * - color: New hex color code (optional)
+ * - isNsfw: Whether this tag marks content as NSFW (optional)
  */
 tagsRoutes.put("/:id", async (c) => {
   try {
@@ -151,7 +154,7 @@ tagsRoutes.put("/:id", async (c) => {
     const id = c.req.param("id");
     const body = await c.req.json();
     
-    const { name, color } = body;
+    const { name, color, isNsfw } = body;
     
     // Validate name if provided
     if (name !== undefined && (typeof name !== "string" || name.trim().length === 0)) {
@@ -173,6 +176,7 @@ tagsRoutes.put("/:id", async (c) => {
       id: id as any,
       name: name?.trim(),
       color: color || undefined,
+      isNsfw: isNsfw,
     });
     
     return c.json({

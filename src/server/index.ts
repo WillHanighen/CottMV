@@ -300,6 +300,9 @@ console.log(`
 export default {
   port: PORT,
   fetch: app.fetch,
+  // Increase idle timeout for long-running requests like transcoding
+  // Default is 10 seconds, max is 255 seconds (~4 minutes)
+  idleTimeout: 255,
 };
 
 // Also export the app for testing

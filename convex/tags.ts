@@ -61,6 +61,7 @@ export const create = mutation({
   args: {
     name: v.string(),
     color: v.optional(v.string()),
+    isNsfw: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     // Check if tag with same name already exists
@@ -78,6 +79,7 @@ export const create = mutation({
     const tagId = await ctx.db.insert("tags", {
       name: args.name,
       color: args.color,
+      isNsfw: args.isNsfw || false,
       createdAt: now,
       updatedAt: now,
     });
@@ -94,6 +96,7 @@ export const update = mutation({
     id: v.id("tags"),
     name: v.optional(v.string()),
     color: v.optional(v.string()),
+    isNsfw: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { id, ...updates } = args;
@@ -116,6 +119,7 @@ export const update = mutation({
     
     if (updates.name !== undefined) fieldsToUpdate.name = updates.name;
     if (updates.color !== undefined) fieldsToUpdate.color = updates.color;
+    if (updates.isNsfw !== undefined) fieldsToUpdate.isNsfw = updates.isNsfw;
     
     await ctx.db.patch(id, fieldsToUpdate);
   },
@@ -202,6 +206,19 @@ export const listWithCounts = query({
 });
 
 /**
+ * Get all NSFW tags
+ * 
+ * Returns: Array of tag objects that are marked as NSFW
+ */
+export const getNsfwTags = query({
+  args: {},
+  handler: async (ctx) => {
+    const tags = await ctx.db.query("tags").collect();
+    return tags.filter((tag) => tag.isNsfw === true);
+  },
+});
+
+/**
  * Create default tags if they don't exist
  * 
  * This is called on application startup to ensure common tags exist
@@ -218,6 +235,7 @@ export const createDefaults = mutation({
       { name: "Screenshots", color: "#00B894" },
       { name: "Documents", color: "#74B9FF" },
       { name: "Videos", color: "#A29BFE" },
+      { name: "NSFW", color: "#DC2626", isNsfw: true },
     ];
     
     const created: string[] = [];
@@ -233,6 +251,7 @@ export const createDefaults = mutation({
         await ctx.db.insert("tags", {
           name: tag.name,
           color: tag.color,
+          isNsfw: (tag as any).isNsfw || false,
           createdAt: now,
           updatedAt: now,
         });

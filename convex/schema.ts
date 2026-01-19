@@ -165,12 +165,14 @@ export default defineSchema({
    * Fields:
    * - name: Tag display name (e.g., "Movies", "Music", "Memes")
    * - color: Optional hex color for the tag (e.g., "#FF5733")
+   * - isNsfw: Whether this tag marks content as NSFW (blurs thumbnails, asks before playing)
    * - createdAt: When the tag was created
    * - updatedAt: When the tag was last modified
    */
   tags: defineTable({
     name: v.string(),
     color: v.optional(v.string()),
+    isNsfw: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

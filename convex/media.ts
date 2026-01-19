@@ -61,7 +61,8 @@ export const list = query({
   handler: async (ctx) => {
     // Fetch all media and sort by creation date (newest first)
     const media = await ctx.db.query("media").order("desc").collect();
-    return media;
+    // Filter out thumbnail files
+    return media.filter((m) => !m.filename.endsWith("_thumb.jpg"));
   },
 });
 
@@ -96,6 +97,9 @@ export const listFiltered = query({
       const ext = args.extension.toLowerCase().replace(/^\./, "");
       results = results.filter((m) => m.extension?.toLowerCase() === ext);
     }
+    
+    // Filter out thumbnail files
+    results = results.filter((m) => !m.filename.endsWith("_thumb.jpg"));
     
     // Apply sorting
     const sortField = args.sortField || "createdAt";
@@ -221,7 +225,7 @@ export const get = query({
 });
 
 /**
- * Search media by title
+ * Search media by title with full filtering and sorting support
  * 
  * Usage: Call this for the search functionality
  * Returns: Array of matching media objects
@@ -233,6 +237,10 @@ export const search = query({
   args: { 
     searchTerm: v.string(),
     mediaType: v.optional(mediaTypeValidator),
+    tagId: v.optional(v.id("tags")),
+    extension: v.optional(v.string()),
+    sortField: v.optional(sortFieldValidator),
+    sortDirection: v.optional(sortDirectionValidator),
   },
   handler: async (ctx, args) => {
     let allMedia = await ctx.db.query("media").collect();
@@ -251,6 +259,59 @@ export const search = query({
     if (args.mediaType) {
       results = results.filter((m) => m.mediaType === args.mediaType);
     }
+    
+    // Filter by tag if specified
+    if (args.tagId) {
+      results = results.filter((m) => m.tags && m.tags.includes(args.tagId!));
+    }
+    
+    // Filter by extension if specified
+    if (args.extension) {
+      const ext = args.extension.toLowerCase().replace(/^\./, "");
+      results = results.filter((m) => m.extension?.toLowerCase() === ext);
+    }
+    
+    // Filter out thumbnail files
+    results = results.filter((m) => !m.filename.endsWith("_thumb.jpg"));
+    
+    // Apply sorting
+    const sortField = args.sortField || "createdAt";
+    const sortDirection = args.sortDirection || "desc";
+    
+    results.sort((a, b) => {
+      let aVal: any;
+      let bVal: any;
+      
+      switch (sortField) {
+        case "title":
+          aVal = a.title.toLowerCase();
+          bVal = b.title.toLowerCase();
+          break;
+        case "size":
+          aVal = a.size;
+          bVal = b.size;
+          break;
+        case "duration":
+          aVal = a.duration || 0;
+          bVal = b.duration || 0;
+          break;
+        case "year":
+          aVal = a.year || 0;
+          bVal = b.year || 0;
+          break;
+        case "createdAt":
+        default:
+          aVal = a.createdAt;
+          bVal = b.createdAt;
+          break;
+      }
+      
+      if (sortDirection === "asc") {
+        return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+      } else {
+        return aVal > bVal ? -1 : aVal < bVal ? 1 : 0;
+      }
+    });
     
     return results;
   },
@@ -275,6 +336,7 @@ export const create = mutation({
     mediaType: mediaTypeValidator,
     size: v.number(),
     duration: v.optional(v.number()),
+    thumbnail: v.optional(v.string()),
     coverUrl: v.optional(v.string()),
     // External metadata
     externalId: v.optional(v.string()),
@@ -301,6 +363,7 @@ export const create = mutation({
       mediaType: args.mediaType,
       size: args.size,
       duration: args.duration,
+      thumbnail: args.thumbnail,
       coverUrl: args.coverUrl,
       r2BackedUp: false,
       // External metadata
@@ -445,13 +508,15 @@ export const removeTag = mutation({
 });
 
 /**
- * List media filtered by tag
+ * List media filtered by tag with full filtering and sorting support
  *
  * Usage: Filter media browser by tag
  */
 export const listByTag = query({
   args: {
     tagId: v.id("tags"),
+    mediaType: v.optional(mediaTypeValidator),
+    extension: v.optional(v.string()),
     sortField: v.optional(sortFieldValidator),
     sortDirection: v.optional(sortDirectionValidator),
   },
@@ -460,6 +525,20 @@ export const listByTag = query({
     
     // Filter by tag
     let results = allMedia.filter((m) => m.tags && m.tags.includes(args.tagId));
+    
+    // Filter by media type if specified
+    if (args.mediaType) {
+      results = results.filter((m) => m.mediaType === args.mediaType);
+    }
+    
+    // Filter by extension if specified
+    if (args.extension) {
+      const ext = args.extension.toLowerCase().replace(/^\./, "");
+      results = results.filter((m) => m.extension?.toLowerCase() === ext);
+    }
+    
+    // Filter out thumbnail files
+    results = results.filter((m) => !m.filename.endsWith("_thumb.jpg"));
     
     // Apply sorting
     const sortField = args.sortField || "createdAt";

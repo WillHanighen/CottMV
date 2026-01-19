@@ -17,8 +17,51 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../convex/_generated/api.js";
 import { runCleanup, getCacheStats, formatBytes } from "../../media/cleanup.js";
 import { R2Storage, createR2Client, generateR2Key } from "../../storage/r2.js";
-import { existsSync } from "fs";
+import { existsSync, statSync } from "fs";
 import { expandPath } from "../../storage/local.js";
+
+/**
+ * Helper function to format file size for display
+ */
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+/**
+ * Upload a file to R2 with retry logic
+ */
+async function uploadWithRetry(
+  r2: R2Storage,
+  filepath: string,
+  r2Key: string,
+  mimeType: string | undefined,
+  maxRetries: number = 3
+): Promise<void> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[R2 Backup] Upload attempt ${attempt}/${maxRetries}...`);
+      await r2.uploadFile(filepath, r2Key, mimeType);
+      return; // Success
+    } catch (err) {
+      lastError = err as Error;
+      console.error(`[R2 Backup] Upload attempt ${attempt} failed:`, err);
+      
+      if (attempt < maxRetries) {
+        // Wait before retrying (exponential backoff: 2s, 4s, 8s...)
+        const waitMs = Math.pow(2, attempt) * 1000;
+        console.log(`[R2 Backup] Waiting ${waitMs}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+      }
+    }
+  }
+  
+  throw lastError;
+}
 
 /**
  * Create the admin routes
@@ -344,32 +387,69 @@ adminRoutes.get("/r2/status", async (c) => {
  * Response: Backup results
  */
 adminRoutes.post("/r2/backup", async (c) => {
+  console.log("[R2 Backup] Starting backup request...");
+  
   try {
     const convex = c.get("convex") as ConvexHttpClient;
+    console.log("[R2 Backup] Got Convex client");
     
     // Get R2 config
-    const r2Config = await convex.query(api.settings.getR2Config, {});
-    
-    if (!r2Config.enabled) {
+    console.log("[R2 Backup] Fetching R2 config...");
+    let r2Config;
+    try {
+      r2Config = await convex.query(api.settings.getR2Config, {});
+      console.log("[R2 Backup] R2 config retrieved:", {
+        enabled: r2Config.enabled,
+        hasAccessKeyId: !!r2Config.accessKeyId,
+        hasSecretAccessKey: !!r2Config.secretAccessKey,
+        hasBucketName: !!r2Config.bucketName,
+        hasEndpoint: !!r2Config.endpoint,
+        endpoint: r2Config.endpoint ? r2Config.endpoint.substring(0, 30) + "..." : "(empty)",
+      });
+    } catch (configErr) {
+      console.error("[R2 Backup] Failed to fetch R2 config:", configErr);
       return c.json({
         success: false,
-        error: "R2 backup is disabled",
+        error: `Failed to fetch R2 config: ${configErr}`,
+      }, 500);
+    }
+    
+    if (!r2Config.enabled) {
+      console.log("[R2 Backup] R2 is disabled in settings");
+      return c.json({
+        success: false,
+        error: "R2 backup is disabled. Enable it in settings first.",
       }, 400);
     }
     
+    console.log("[R2 Backup] Creating R2 client...");
     const r2 = createR2Client(r2Config);
     
     if (!r2) {
+      console.log("[R2 Backup] Failed to create R2 client - credentials incomplete");
       return c.json({
         success: false,
-        error: "R2 credentials are incomplete",
+        error: "R2 credentials are incomplete. Please configure all R2 settings.",
       }, 400);
     }
+    console.log("[R2 Backup] R2 client created successfully");
     
     // Get unbacked-up media
-    const unbackedUp = await convex.query(api.media.getUnbackedUp, {});
+    console.log("[R2 Backup] Fetching unbacked-up media...");
+    let unbackedUp;
+    try {
+      unbackedUp = await convex.query(api.media.getUnbackedUp, {});
+      console.log(`[R2 Backup] Found ${unbackedUp.length} media files to backup`);
+    } catch (queryErr) {
+      console.error("[R2 Backup] Failed to fetch unbacked-up media:", queryErr);
+      return c.json({
+        success: false,
+        error: `Failed to fetch media list: ${queryErr}`,
+      }, 500);
+    }
     
     if (unbackedUp.length === 0) {
+      console.log("[R2 Backup] No files to backup - all media is already backed up");
       return c.json({
         success: true,
         data: {
@@ -385,34 +465,64 @@ adminRoutes.post("/r2/backup", async (c) => {
     let failed = 0;
     const errors: string[] = [];
     
+    console.log(`[R2 Backup] Starting backup of ${unbackedUp.length} files...`);
+    
     for (const media of unbackedUp) {
+      // Expand ~ paths to absolute paths
+      const filepath = expandPath(media.filepath);
+      console.log(`[R2 Backup] Processing: ${media.title}`);
+      console.log(`[R2 Backup]   Original path: ${media.filepath}`);
+      console.log(`[R2 Backup]   Expanded path: ${filepath}`);
+      
       try {
         // Check if file exists
-        if (!existsSync(media.filepath)) {
-          errors.push(`File not found: ${media.filepath}`);
+        if (!existsSync(filepath)) {
+          const errMsg = `File not found: ${filepath}`;
+          console.log(`[R2 Backup] ${errMsg}`);
+          errors.push(errMsg);
           failed++;
           continue;
         }
         
-        // Generate R2 key
-        const r2Key = generateR2Key(media.filepath, "media");
+        // Get file size for logging
+        let fileSize: number;
+        try {
+          fileSize = statSync(filepath).size;
+          console.log(`[R2 Backup]   File size: ${formatFileSize(fileSize)}`);
+        } catch {
+          fileSize = 0;
+        }
         
-        // Upload to R2
-        await r2.uploadFile(media.filepath, r2Key, media.mimeType);
+        // Generate R2 key using the utility function
+        // Normalizes path separators and removes leading slashes
+        const r2Key = generateR2Key(filepath, "media");
+        console.log(`[R2 Backup]   R2 key: ${r2Key}`);
+        
+        // Upload to R2 with retry logic
+        console.log(`[R2 Backup]   Uploading to R2...`);
+        await uploadWithRetry(r2, filepath, r2Key, media.mimeType, 3);
+        console.log(`[R2 Backup]   Upload complete`);
         
         // Update database
+        console.log(`[R2 Backup]   Updating database...`);
         await convex.mutation(api.media.update, {
           id: media._id,
           r2Key,
           r2BackedUp: true,
         });
+        console.log(`[R2 Backup]   Database updated`);
         
         backed++;
+        console.log(`[R2 Backup] Successfully backed up: ${media.title} (${backed}/${unbackedUp.length})`);
       } catch (err) {
-        errors.push(`Failed to backup ${media.title}: ${err}`);
+        const errMsg = `Failed to backup ${media.title}: ${err}`;
+        console.error(`[R2 Backup] ${errMsg}`);
+        errors.push(errMsg);
         failed++;
       }
     }
+    
+    console.log(`[R2 Backup] Backup complete. Backed: ${backed}, Failed: ${failed}`);
     
     return c.json({
       success: true,
@@ -424,10 +534,10 @@ adminRoutes.post("/r2/backup", async (c) => {
       },
     });
   } catch (error) {
-    console.error("Error running R2 backup:", error);
+    console.error("[R2 Backup] Unexpected error:", error);
     return c.json({
       success: false,
-      error: "Failed to run R2 backup",
+      error: `Failed to run R2 backup: ${error}`,
     }, 500);
   }
 });
@@ -490,30 +600,63 @@ adminRoutes.get("/stats", async (c) => {
  * POST /api/admin/r2/test
  * 
  * Test R2 connection with provided credentials.
+ * Falls back to stored credentials for any missing fields.
  * 
  * Request Body:
- * - accessKeyId: R2 access key
- * - secretAccessKey: R2 secret key
- * - bucketName: R2 bucket name
- * - endpoint: R2 endpoint URL
+ * - accessKeyId: R2 access key (optional, falls back to stored)
+ * - secretAccessKey: R2 secret key (optional, falls back to stored)
+ * - bucketName: R2 bucket name (optional, falls back to stored)
+ * - endpoint: R2 endpoint URL (optional, falls back to stored)
  * 
  * Response: Connection test result
  */
 adminRoutes.post("/r2/test", async (c) => {
+  console.log("[R2 Test] Starting connection test...");
+  
   try {
+    const convex = c.get("convex") as ConvexHttpClient;
     const body = await c.req.json();
     
-    const { accessKeyId, secretAccessKey, bucketName, endpoint } = body;
+    // Get stored R2 config to use as fallback
+    console.log("[R2 Test] Fetching stored R2 config...");
+    const storedConfig = await convex.query(api.settings.getR2Config, {});
+    console.log("[R2 Test] Stored config:", {
+      hasAccessKeyId: !!storedConfig.accessKeyId,
+      hasSecretAccessKey: !!storedConfig.secretAccessKey,
+      hasBucketName: !!storedConfig.bucketName,
+      hasEndpoint: !!storedConfig.endpoint,
+    });
+    
+    // Use provided values or fall back to stored values
+    const accessKeyId = body.accessKeyId || storedConfig.accessKeyId;
+    const secretAccessKey = body.secretAccessKey || storedConfig.secretAccessKey;
+    const bucketName = body.bucketName || storedConfig.bucketName;
+    const endpoint = body.endpoint || storedConfig.endpoint;
+    
+    console.log("[R2 Test] Using credentials:", {
+      accessKeyIdSource: body.accessKeyId ? "form" : "stored",
+      secretAccessKeySource: body.secretAccessKey ? "form" : "stored",
+      bucketNameSource: body.bucketName ? "form" : "stored",
+      endpointSource: body.endpoint ? "form" : "stored",
+      hasAllCredentials: !!(accessKeyId && secretAccessKey && bucketName && endpoint),
+    });
     
     if (!accessKeyId || !secretAccessKey || !bucketName || !endpoint) {
+      console.log("[R2 Test] Missing credentials:", {
+        accessKeyId: !accessKeyId,
+        secretAccessKey: !secretAccessKey,
+        bucketName: !bucketName,
+        endpoint: !endpoint,
+      });
       return c.json({
         success: false,
-        error: "All R2 credentials are required",
+        error: "All R2 credentials are required. Please fill in all fields and save settings first.",
       }, 400);
     }
     
     // Try to create client and list files
     try {
+      console.log("[R2 Test] Creating R2 client...");
       const r2 = new R2Storage({
         accessKeyId,
         secretAccessKey,
@@ -522,8 +665,10 @@ adminRoutes.post("/r2/test", async (c) => {
       });
       
       // Try to list files (limited to 1) to verify connection
+      console.log("[R2 Test] Testing connection by listing files...");
       await r2.listFiles(undefined, 1);
       
+      console.log("[R2 Test] Connection successful!");
       return c.json({
         success: true,
         data: {
@@ -532,6 +677,7 @@ adminRoutes.post("/r2/test", async (c) => {
         },
       });
     } catch (err) {
+      console.error("[R2 Test] Connection failed:", err);
       return c.json({
         success: true,
         data: {
@@ -542,10 +688,10 @@ adminRoutes.post("/r2/test", async (c) => {
       });
     }
   } catch (error) {
-    console.error("Error testing R2 connection:", error);
+    console.error("[R2 Test] Unexpected error:", error);
     return c.json({
       success: false,
-      error: "Failed to test R2 connection",
+      error: `Failed to test R2 connection: ${error}`,
     }, 500);
   }
 });

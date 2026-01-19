@@ -28,8 +28,9 @@ import {
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { NodeHttpHandler } from "@smithy/node-http-handler";
 import { createReadStream, createWriteStream } from "fs";
-import { stat, mkdir } from "fs/promises";
+import { stat, mkdir, readFile } from "fs/promises";
 import { dirname } from "path";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
@@ -92,7 +93,7 @@ export class R2Storage {
 
     this.bucketName = config.bucketName;
 
-    // Create S3 client configured for R2
+    // Create S3 client configured for R2 with extended timeouts for large files
     const clientConfig: S3ClientConfig = {
       region: "auto", // R2 uses "auto" for region
       endpoint: config.endpoint,
@@ -100,6 +101,11 @@ export class R2Storage {
         accessKeyId: config.accessKeyId,
         secretAccessKey: config.secretAccessKey,
       },
+      // Use NodeHttpHandler with extended timeouts for large file uploads
+      requestHandler: new NodeHttpHandler({
+        connectionTimeout: 30000, // 30 seconds to establish connection
+        requestTimeout: 600000,   // 10 minutes for the request (large files)
+      }),
     };
 
     this.client = new S3Client(clientConfig);
@@ -107,6 +113,9 @@ export class R2Storage {
 
   /**
    * Upload a file to R2
+   * 
+   * Uses buffer-based upload instead of streaming to avoid ECONNRESET
+   * issues with Bun's fetch implementation and the AWS SDK.
    * 
    * @param localPath - Path to the local file
    * @param r2Key - Key (path) to store the file under in R2
@@ -127,23 +136,27 @@ export class R2Storage {
     r2Key: string,
     contentType?: string
   ): Promise<{ key: string; size: number }> {
-    // Get file size for progress tracking
+    // Get file size
     const fileStats = await stat(localPath);
     const fileSize = fileStats.size;
 
-    // Create a read stream for the file
-    const fileStream = createReadStream(localPath);
+    // Read file into buffer (more reliable than streaming with Bun/AWS SDK)
+    // For very large files (>500MB), consider implementing multipart upload
+    console.log(`[R2] Reading file into buffer: ${localPath} (${fileSize} bytes)`);
+    const fileBuffer = await readFile(localPath);
 
     // Upload to R2
     const command = new PutObjectCommand({
       Bucket: this.bucketName,
       Key: r2Key,
-      Body: fileStream,
+      Body: fileBuffer,
       ContentType: contentType || "application/octet-stream",
       ContentLength: fileSize,
     });
 
+    console.log(`[R2] Sending upload command to R2...`);
     await this.client.send(command);
+    console.log(`[R2] Upload complete: ${r2Key}`);
 
     return {
       key: r2Key,

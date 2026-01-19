@@ -48,6 +48,18 @@ export const RESOLUTIONS = {
     videoBitrate: "5000k",
     audioBitrate: "256k",
   },
+  "1440p": {
+    width: 2560,
+    height: 1440,
+    videoBitrate: "10000k",
+    audioBitrate: "320k",
+  },
+  "2160p": {
+    width: 3840,
+    height: 2160,
+    videoBitrate: "20000k",
+    audioBitrate: "320k",
+  },
 } as const;
 
 export type Resolution = keyof typeof RESOLUTIONS;

@@ -20,16 +20,19 @@ import { Hono } from "hono";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../convex/_generated/api.js";
 import { createReadStream, existsSync } from "fs";
-import { stat } from "fs/promises";
-import { join } from "path";
+import { stat, mkdir } from "fs/promises";
+import { join, dirname } from "path";
+import { nanoid } from "nanoid";
 import {
   transcodeVideo,
   needsTranscoding,
   type Resolution,
   type Format,
   RESOLUTIONS,
+  generateThumbnail,
 } from "../../media/transcoder.js";
 import { expandPath } from "../../storage/local.js";
+import { transcodeManager } from "../transcode-manager.js";
 
 /**
  * Create the stream routes
@@ -189,7 +192,7 @@ streamRoutes.get("/:id/info", async (c) => {
       transcodeCheck = await needsTranscoding(media.filepath);
       // For simplicity, offer all qualities
       // In production, you'd check the source resolution
-      availableQualities = ["480p", "720p", "1080p"];
+      availableQualities = ["480p", "720p", "1080p", "1440p", "2160p"];
     }
     
     return c.json({
@@ -257,6 +260,209 @@ streamRoutes.post("/:id/transcode", async (c) => {
 });
 
 /**
+ * GET /api/stream/:id/transcode-progress
+ * 
+ * Stream transcoding progress using Server-Sent Events (SSE).
+ * Starts transcoding and emits progress events until complete.
+ * 
+ * Query Parameters:
+ * - quality: Video quality (480p, 720p, 1080p)
+ * - format: Output format (mp4, webm)
+ * 
+ * Events:
+ * - progress: { percent, eta, message }
+ * - complete: { path, quality, format }
+ * - error: { message }
+ */
+streamRoutes.get("/:id/transcode-progress", async (c) => {
+  const convex = c.get("convex") as ConvexHttpClient;
+  const id = c.req.param("id");
+  const quality = (c.req.query("quality") as Resolution) || "720p";
+  const format = (c.req.query("format") as Format) || "mp4";
+  
+  const media = await convex.query(api.media.getById, { id: id as any });
+  
+  if (!media) {
+    return c.json({ error: "Media not found" }, 404);
+  }
+  
+  // Check if already cached
+  const cached = await convex.query(api.cache.get, {
+    mediaId: media._id,
+    format,
+    resolution: quality,
+  });
+  
+  if (cached && existsSync(cached.transcodedPath)) {
+    // Already cached, return complete immediately
+    const body = `data: ${JSON.stringify({ event: "complete", path: cached.transcodedPath })}\n\n`;
+    return new Response(body, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      },
+    });
+  }
+  
+  // Get cache configuration
+  const cacheConfig = await convex.query(api.settings.getCacheConfig, {});
+  const cacheDir = expandPath(cacheConfig.directory || "~/.CottMV/cache");
+  await mkdir(cacheDir, { recursive: true });
+  
+  // Create SSE stream using TransformStream for better Bun compatibility
+  let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
+  let isStreamClosed = false;
+  let unsubscribe: (() => void) | null = null;
+  let pingInterval: ReturnType<typeof setInterval> | null = null;
+  
+  const encoder = new TextEncoder();
+  
+  const sendEvent = (eventData: any) => {
+    if (isStreamClosed || !streamController) return false;
+    try {
+      const data = `data: ${JSON.stringify(eventData)}\n\n`;
+      streamController.enqueue(encoder.encode(data));
+      return true;
+    } catch (e) {
+      isStreamClosed = true;
+      cleanup();
+      return false;
+    }
+  };
+  
+  const cleanup = () => {
+    if (pingInterval) {
+      clearInterval(pingInterval);
+      pingInterval = null;
+    }
+    if (unsubscribe) {
+      unsubscribe();
+      unsubscribe = null;
+    }
+  };
+  
+  const closeStream = () => {
+    if (!isStreamClosed && streamController) {
+      isStreamClosed = true;
+      cleanup();
+      try {
+        streamController.close();
+      } catch (e) {
+        // Already closed
+      }
+    }
+  };
+  
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController = controller;
+      
+      // Send initial status immediately
+      sendEvent({ event: "status", message: "Starting transcoding...", quality, format });
+      
+      // Start ping interval immediately - send ping every 2 seconds to keep connection alive
+      pingInterval = setInterval(() => {
+        if (isStreamClosed) {
+          cleanup();
+          return;
+        }
+        // Send SSE comment as keepalive (doesn't trigger onmessage but keeps connection open)
+        try {
+          streamController?.enqueue(encoder.encode(": ping\n\n"));
+        } catch (e) {
+          isStreamClosed = true;
+          cleanup();
+        }
+      }, 2000);
+      
+      // Subscribe to transcode manager events
+      unsubscribe = transcodeManager.subscribe(
+        media._id,
+        quality,
+        format,
+        (event, data) => {
+          if (isStreamClosed) return;
+          
+          const sent = sendEvent({ event, ...data });
+          if (!sent) return;
+          
+          if (event === "complete") {
+            console.log(`SSE: Received complete event with path: ${data.path}`);
+            
+            // Save to cache database if not already cached
+            if (data.path && data.size !== undefined) {
+              convex.query(api.cache.get, {
+                mediaId: media._id,
+                format,
+                resolution: quality,
+              }).then((existingCache) => {
+                if (!existingCache) {
+                  convex.mutation(api.cache.create, {
+                    mediaId: media._id,
+                    transcodedPath: data.path,
+                    format,
+                    resolution: quality,
+                    size: data.size,
+                    ttlHours: cacheConfig.ttlHours || 24,
+                  }).catch((err) => {
+                    console.error("Error saving transcoded file to cache:", err);
+                  });
+                }
+              }).catch(console.error);
+            }
+            
+            // Close stream after complete
+            setTimeout(closeStream, 100);
+          } else if (event === "error") {
+            setTimeout(closeStream, 100);
+          }
+        }
+      );
+      
+      // Start transcoding if not already in progress
+      if (!transcodeManager.isTranscoding(media._id, quality, format)) {
+        transcodeManager.startTranscode(
+          media._id,
+          quality,
+          format,
+          async (onProgress) => {
+            const result = await transcodeVideo({
+              inputPath: media.filepath,
+              outputDir: cacheDir,
+              resolution: quality,
+              format,
+              onProgress,
+            });
+            return result;
+          }
+        ).catch((error) => {
+          console.error("Transcoding error:", error);
+          if (!isStreamClosed) {
+            sendEvent({ event: "error", message: error.message });
+            setTimeout(closeStream, 100);
+          }
+        });
+      }
+    },
+    cancel() {
+      // Called when client disconnects
+      isStreamClosed = true;
+      cleanup();
+    },
+  });
+  
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no", // Disable nginx buffering if behind proxy
+    },
+  });
+});
+
+/**
  * Helper function to get or create a transcoded file
  * 
  * This function:
@@ -283,35 +489,168 @@ async function getOrCreateTranscodedFile(
     return cached.transcodedPath;
   }
   
+  // Check if already transcoding via transcode manager
+  const existingState = transcodeManager.getTranscodeState(media._id, resolution, format);
+  if (existingState && existingState.status === 'complete' && existingState.outputPath) {
+    return existingState.outputPath;
+  }
+  
   // Get cache configuration
   const cacheConfig = await convex.query(api.settings.getCacheConfig, {});
   // Expand ~ and $HOME to actual home directory path
   const cacheDir = expandPath(cacheConfig.directory || "~/.CottMV/cache");
+  await mkdir(cacheDir, { recursive: true });
   
-  // Transcode the video
+  // Use transcode manager to coordinate transcoding
   console.log(`Transcoding ${media.title} to ${resolution} ${format}...`);
   
-  const result = await transcodeVideo({
-    inputPath: media.filepath,
-    outputDir: cacheDir,
+  const result = await transcodeManager.startTranscode(
+    media._id,
     resolution,
     format,
-    onProgress: (percent) => {
-      console.log(`Transcoding progress: ${percent}%`);
-    },
-  });
+    async (onProgress) => {
+      return await transcodeVideo({
+        inputPath: media.filepath,
+        outputDir: cacheDir,
+        resolution,
+        format,
+        onProgress: (percent) => {
+          console.log(`Transcoding progress: ${percent}%`);
+          onProgress(percent);
+        },
+      });
+    }
+  );
   
   console.log(`Transcoding complete: ${result.outputPath}`);
   
-  // Save to cache database
-  await convex.mutation(api.cache.create, {
-    mediaId: media._id,
-    transcodedPath: result.outputPath,
-    format,
-    resolution,
-    size: result.size,
-    ttlHours: cacheConfig.ttlHours || 24,
-  });
+  // Save to cache database if not already cached
+  // Only save if we have both outputPath and size
+  if (result.outputPath && result.size !== undefined) {
+    const existingCache = await convex.query(api.cache.get, {
+      mediaId: media._id,
+      format,
+      resolution,
+    });
+    
+    if (!existingCache) {
+      await convex.mutation(api.cache.create, {
+        mediaId: media._id,
+        transcodedPath: result.outputPath,
+        format,
+        resolution,
+        size: result.size,
+        ttlHours: cacheConfig.ttlHours || 24,
+      });
+    }
+  } else {
+    console.warn("Transcode result missing outputPath or size:", { 
+      outputPath: result.outputPath, 
+      size: result.size 
+    });
+  }
   
   return result.outputPath;
 }
+
+/**
+ * GET /api/thumbnail/:id
+ * 
+ * Get a thumbnail for a media file.
+ * For videos: Returns the stored thumbnail or generates one on demand
+ * For images/gifs: Returns a small preview of the media
+ * For audio: Returns cover art if available, otherwise a placeholder
+ */
+streamRoutes.get("/thumbnail/:id", async (c) => {
+  try {
+    const convex = c.get("convex") as ConvexHttpClient;
+    const id = c.req.param("id");
+    
+    // Get media information from database
+    const media = await convex.query(api.media.getById, { id: id as any });
+    
+    if (!media) {
+      return c.json({ error: "Media not found" }, 404);
+    }
+    
+    // For images and gifs, stream a small preview
+    if (media.mediaType === "image" || media.mediaType === "gif") {
+      if (!existsSync(media.filepath)) {
+        return c.json({ error: "File not found" }, 404);
+      }
+      
+      const fileStats = await stat(media.filepath);
+      const stream = createReadStream(media.filepath);
+      
+      return new Response(stream as any, {
+        status: 200,
+        headers: {
+          "Content-Length": fileStats.size.toString(),
+          "Content-Type": media.mimeType,
+          "Cache-Control": "public, max-age=31536000",
+        },
+      });
+    }
+    
+    // For videos, try to use stored thumbnail or generate one
+    if (media.thumbnail && existsSync(media.thumbnail)) {
+      const fileStats = await stat(media.thumbnail);
+      const stream = createReadStream(media.thumbnail);
+      
+      return new Response(stream as any, {
+        status: 200,
+        headers: {
+          "Content-Length": fileStats.size.toString(),
+          "Content-Type": "image/jpeg",
+          "Cache-Control": "public, max-age=31536000",
+        },
+      });
+    }
+    
+    // Generate thumbnail on demand for videos
+    if (media.mediaType === "video") {
+      const cacheConfig = await convex.query(api.settings.getCacheConfig, {});
+      const thumbnailDir = expandPath(cacheConfig.directory || "~/.CottMV/cache");
+      await mkdir(thumbnailDir, { recursive: true });
+      
+      const thumbnailFilename = `${nanoid(8)}.jpg`;
+      const thumbnailPath = join(thumbnailDir, thumbnailFilename);
+      
+      try {
+        await generateThumbnail(media.filepath, thumbnailPath);
+        
+        // Update the media record with the thumbnail path
+        await convex.mutation(api.media.update, {
+          id: media._id,
+          thumbnail: thumbnailPath,
+        });
+        
+        const fileStats = await stat(thumbnailPath);
+        const stream = createReadStream(thumbnailPath);
+        
+        return new Response(stream as any, {
+          status: 200,
+          headers: {
+            "Content-Length": fileStats.size.toString(),
+            "Content-Type": "image/jpeg",
+            "Cache-Control": "public, max-age=31536000",
+          },
+        });
+      } catch (err) {
+        console.error("Failed to generate thumbnail:", err);
+        return c.json({ error: "Failed to generate thumbnail" }, 500);
+      }
+    }
+    
+    // For audio with cover art
+    if (media.mediaType === "audio" && media.coverUrl) {
+      return c.redirect(media.coverUrl);
+    }
+    
+    // Return a placeholder for other types
+    return c.json({ error: "No thumbnail available" }, 404);
+  } catch (error) {
+    console.error("Error getting thumbnail:", error);
+    return c.json({ error: "Failed to get thumbnail" }, 500);
+  }
+});

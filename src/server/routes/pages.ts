@@ -66,8 +66,362 @@ function htmlHead(title: string): string {
         ::-webkit-scrollbar-thumb:hover {
           background: #6b7280;
         }
+        
+        /* Toast Notification Styles */
+        .toast-container {
+          position: fixed;
+          top: 1rem;
+          right: 1rem;
+          z-index: 9999;
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+          pointer-events: none;
+        }
+        .toast {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          padding: 0.875rem 1rem;
+          border-radius: 0.5rem;
+          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
+          pointer-events: auto;
+          animation: toast-slide-in 0.3s ease-out;
+          max-width: 24rem;
+        }
+        .toast.toast-success {
+          background: linear-gradient(135deg, #065f46 0%, #047857 100%);
+          border: 1px solid #10b981;
+        }
+        .toast.toast-error {
+          background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
+          border: 1px solid #ef4444;
+        }
+        .toast.toast-info {
+          background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 100%);
+          border: 1px solid #3b82f6;
+        }
+        .toast.toast-warning {
+          background: linear-gradient(135deg, #78350f 0%, #92400e 100%);
+          border: 1px solid #f59e0b;
+        }
+        .toast-icon {
+          font-size: 1.25rem;
+          flex-shrink: 0;
+        }
+        .toast-message {
+          color: white;
+          font-size: 0.875rem;
+          line-height: 1.4;
+        }
+        .toast-close {
+          margin-left: auto;
+          padding: 0.25rem;
+          color: rgba(255, 255, 255, 0.7);
+          cursor: pointer;
+          border-radius: 0.25rem;
+          transition: color 0.2s, background-color 0.2s;
+          flex-shrink: 0;
+        }
+        .toast-close:hover {
+          color: white;
+          background-color: rgba(255, 255, 255, 0.1);
+        }
+        .toast.toast-hiding {
+          animation: toast-slide-out 0.2s ease-in forwards;
+        }
+        @keyframes toast-slide-in {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+        @keyframes toast-slide-out {
+          from {
+            transform: translateX(0);
+            opacity: 1;
+          }
+          to {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+        }
+        
+        /* Confirm Modal Styles */
+        .confirm-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.7);
+          backdrop-filter: blur(4px);
+          z-index: 10000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          opacity: 0;
+          visibility: hidden;
+          transition: opacity 0.2s, visibility 0.2s;
+        }
+        .confirm-modal-overlay.active {
+          opacity: 1;
+          visibility: visible;
+        }
+        .confirm-modal {
+          background: linear-gradient(180deg, #1f2937 0%, #111827 100%);
+          border: 1px solid #374151;
+          border-radius: 0.75rem;
+          padding: 1.5rem;
+          max-width: 28rem;
+          width: 90%;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+          transform: scale(0.95);
+          transition: transform 0.2s;
+        }
+        .confirm-modal-overlay.active .confirm-modal {
+          transform: scale(1);
+        }
+        .confirm-modal-icon {
+          width: 3rem;
+          height: 3rem;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 1rem;
+          font-size: 1.5rem;
+        }
+        .confirm-modal-icon.warning {
+          background: rgba(245, 158, 11, 0.2);
+        }
+        .confirm-modal-icon.danger {
+          background: rgba(239, 68, 68, 0.2);
+        }
+        .confirm-modal-icon.info {
+          background: rgba(59, 130, 246, 0.2);
+        }
+        .confirm-modal-title {
+          font-size: 1.125rem;
+          font-weight: 600;
+          color: white;
+          text-align: center;
+          margin-bottom: 0.5rem;
+        }
+        .confirm-modal-message {
+          color: #9ca3af;
+          text-align: center;
+          font-size: 0.875rem;
+          line-height: 1.5;
+          margin-bottom: 1.5rem;
+        }
+        .confirm-modal-buttons {
+          display: flex;
+          gap: 0.75rem;
+          justify-content: center;
+        }
+        .confirm-modal-btn {
+          padding: 0.625rem 1.25rem;
+          border-radius: 0.5rem;
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+          border: none;
+        }
+        .confirm-modal-btn.cancel {
+          background: #374151;
+          color: #d1d5db;
+        }
+        .confirm-modal-btn.cancel:hover {
+          background: #4b5563;
+        }
+        .confirm-modal-btn.confirm {
+          background: #7c3aed;
+          color: white;
+        }
+        .confirm-modal-btn.confirm:hover {
+          background: #6d28d9;
+        }
+        .confirm-modal-btn.danger {
+          background: #dc2626;
+          color: white;
+        }
+        .confirm-modal-btn.danger:hover {
+          background: #b91c1c;
+        }
       </style>
     </head>
+  `;
+}
+
+/**
+ * Notification system HTML and JavaScript
+ * Includes toast notifications and confirmation modals
+ */
+function notificationSystem(): string {
+  return `
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+    
+    <!-- Confirm Modal -->
+    <div id="confirm-modal-overlay" class="confirm-modal-overlay">
+      <div class="confirm-modal">
+        <div id="confirm-modal-icon" class="confirm-modal-icon warning">⚠️</div>
+        <h3 id="confirm-modal-title" class="confirm-modal-title">Confirm Action</h3>
+        <p id="confirm-modal-message" class="confirm-modal-message">Are you sure you want to proceed?</p>
+        <div class="confirm-modal-buttons">
+          <button id="confirm-modal-cancel" class="confirm-modal-btn cancel">Cancel</button>
+          <button id="confirm-modal-confirm" class="confirm-modal-btn confirm">Confirm</button>
+        </div>
+      </div>
+    </div>
+    
+    <script>
+      // Toast Notification System
+      const ToastManager = {
+        container: null,
+        
+        init() {
+          this.container = document.getElementById('toast-container');
+        },
+        
+        show(message, type = 'info', duration = 4000) {
+          if (!this.container) this.init();
+          
+          const icons = {
+            success: '✓',
+            error: '✕',
+            warning: '⚠',
+            info: 'ℹ'
+          };
+          
+          const toast = document.createElement('div');
+          toast.className = 'toast toast-' + type;
+          toast.innerHTML = 
+            '<span class="toast-icon">' + icons[type] + '</span>' +
+            '<span class="toast-message">' + this.escapeHtml(message) + '</span>' +
+            '<button class="toast-close" onclick="ToastManager.dismiss(this.parentElement)">✕</button>';
+          
+          this.container.appendChild(toast);
+          
+          if (duration > 0) {
+            setTimeout(() => this.dismiss(toast), duration);
+          }
+          
+          return toast;
+        },
+        
+        dismiss(toast) {
+          if (!toast || toast.classList.contains('toast-hiding')) return;
+          toast.classList.add('toast-hiding');
+          setTimeout(() => toast.remove(), 200);
+        },
+        
+        success(message, duration) {
+          return this.show(message, 'success', duration);
+        },
+        
+        error(message, duration = 6000) {
+          return this.show(message, 'error', duration);
+        },
+        
+        warning(message, duration) {
+          return this.show(message, 'warning', duration);
+        },
+        
+        info(message, duration) {
+          return this.show(message, 'info', duration);
+        },
+        
+        escapeHtml(text) {
+          const div = document.createElement('div');
+          div.textContent = text;
+          return div.innerHTML;
+        }
+      };
+      
+      // Confirmation Modal System
+      const ConfirmModal = {
+        overlay: null,
+        resolvePromise: null,
+        
+        init() {
+          this.overlay = document.getElementById('confirm-modal-overlay');
+          
+          document.getElementById('confirm-modal-cancel').addEventListener('click', () => {
+            this.close(false);
+          });
+          
+          document.getElementById('confirm-modal-confirm').addEventListener('click', () => {
+            this.close(true);
+          });
+          
+          this.overlay.addEventListener('click', (e) => {
+            if (e.target === this.overlay) {
+              this.close(false);
+            }
+          });
+          
+          document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.overlay.classList.contains('active')) {
+              this.close(false);
+            }
+          });
+        },
+        
+        show(options = {}) {
+          if (!this.overlay) this.init();
+          
+          const title = options.title || 'Confirm Action';
+          const message = options.message || 'Are you sure you want to proceed?';
+          const confirmText = options.confirmText || 'Confirm';
+          const cancelText = options.cancelText || 'Cancel';
+          const type = options.type || 'warning'; // warning, danger, info
+          
+          const icons = {
+            warning: '⚠️',
+            danger: '🗑️',
+            info: 'ℹ️'
+          };
+          
+          document.getElementById('confirm-modal-icon').className = 'confirm-modal-icon ' + type;
+          document.getElementById('confirm-modal-icon').textContent = icons[type] || icons.warning;
+          document.getElementById('confirm-modal-title').textContent = title;
+          document.getElementById('confirm-modal-message').textContent = message;
+          
+          const confirmBtn = document.getElementById('confirm-modal-confirm');
+          confirmBtn.textContent = confirmText;
+          confirmBtn.className = 'confirm-modal-btn ' + (type === 'danger' ? 'danger' : 'confirm');
+          
+          document.getElementById('confirm-modal-cancel').textContent = cancelText;
+          
+          this.overlay.classList.add('active');
+          document.body.style.overflow = 'hidden';
+          confirmBtn.focus();
+          
+          return new Promise((resolve) => {
+            this.resolvePromise = resolve;
+          });
+        },
+        
+        close(result) {
+          this.overlay.classList.remove('active');
+          document.body.style.overflow = '';
+          if (this.resolvePromise) {
+            this.resolvePromise(result);
+            this.resolvePromise = null;
+          }
+        }
+      };
+      
+      // Initialize on DOM ready
+      document.addEventListener('DOMContentLoaded', () => {
+        ToastManager.init();
+        ConfirmModal.init();
+      });
+    </script>
   `;
 }
 
@@ -108,12 +462,19 @@ function navbar(currentPage: string, user?: { username: string; role: string }):
             </div>
           </div>
           <div class="flex items-center gap-4">
-            <form action="/" method="GET" class="relative">
+            <form action="/" method="GET" class="relative" id="search-form">
               <input type="text" 
                      name="search" 
                      placeholder="Search media..." 
-                     class="bg-gray-700 text-white px-4 py-2 rounded-lg pl-10 focus:outline-none focus:ring-2 focus:ring-purple-500 w-64">
+                     class="bg-gray-700 text-white px-4 py-2 rounded-lg pl-10 focus:outline-none focus:ring-2 focus:ring-purple-500 w-64"
+                     id="search-input">
               <span class="absolute left-3 top-2.5 text-gray-400">🔍</span>
+              <!-- Hidden inputs to preserve current filters during search -->
+              <input type="hidden" name="sort" id="search-sort">
+              <input type="hidden" name="dir" id="search-dir">
+              <input type="hidden" name="type" id="search-type">
+              <input type="hidden" name="tag" id="search-tag">
+              <input type="hidden" name="ext" id="search-ext">
             </form>
             ${user ? `
               <div class="flex items-center gap-2 text-sm">
@@ -180,24 +541,39 @@ pageRoutes.get("/", async (c) => {
     const sortDirection = c.req.query("dir") as "asc" | "desc" | undefined;
     
     // Get available tags for filtering
-    let tags: Array<{ _id: string; name: string; color?: string }> = [];
+    let tags: Array<{ _id: string; name: string; color?: string; isNsfw?: boolean }> = [];
+    let nsfwTagIds: Set<string> = new Set();
     try {
       tags = await convex.query(api.tags.list, {}) as any;
+      // Get NSFW tag IDs for blurring thumbnails
+      const nsfwTags = await convex.query(api.tags.getNsfwTags, {}) as any[];
+      nsfwTagIds = new Set(nsfwTags.map((t: any) => t._id));
     } catch (e) {
       console.log("Tags not available yet:", e);
     }
     
-    // Get media list with filters
+    // Get media list with filters - all filters work together including with search
     let media;
     if (search) {
+      // Search with all filters applied
       media = await convex.query(api.media.search, {
         searchTerm: search,
         mediaType: mediaType,
+        tagId: tagId as any,
+        extension,
+        sortField: sortField || "createdAt",
+        sortDirection: sortDirection || "desc",
       });
     } else if (tagId) {
-      // Filter by tag
+      // Filter by tag with all other filters
       try {
-        media = await convex.query(api.media.listByTag, { tagId: tagId as any });
+        media = await convex.query(api.media.listByTag, { 
+          tagId: tagId as any,
+          mediaType,
+          extension,
+          sortField: sortField || "createdAt",
+          sortDirection: sortDirection || "desc",
+        });
       } catch (e) {
         console.log("Tag filtering not available:", e);
         media = [];
@@ -215,17 +591,38 @@ pageRoutes.get("/", async (c) => {
     const extensions = await convex.query(api.media.getExtensions, {});
     const typeCounts = await convex.query(api.media.getMediaTypeCounts, {});
     
+    // Build base URL params that should persist
+    const baseParams = new URLSearchParams();
+    if (search) baseParams.set('search', search);
+    if (sortField) baseParams.set('sort', sortField);
+    if (sortDirection) baseParams.set('dir', sortDirection);
+    if (extension) baseParams.set('ext', extension);
+    
+    // Helper to build filter URLs
+    const buildFilterUrl = (overrides: Record<string, string | undefined>) => {
+      const params = new URLSearchParams(baseParams);
+      for (const [key, value] of Object.entries(overrides)) {
+        if (value === undefined || value === '') {
+          params.delete(key);
+        } else {
+          params.set(key, value);
+        }
+      }
+      const queryStr = params.toString();
+      return queryStr ? `/?${queryStr}` : '/';
+    };
+    
     // Build filter UI
     const filterTabs = `
       <div class="flex flex-wrap gap-2 mb-4">
-        <a href="/?sort=${sortField || 'createdAt'}&dir=${sortDirection || 'desc'}"
+        <a href="${buildFilterUrl({ type: undefined, tag: undefined })}"
            class="px-3 py-1.5 rounded-lg text-sm ${!mediaType && !tagId ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}">
           All (${Object.values(typeCounts).reduce((a: number, b: number) => a + b, 0)})
         </a>
         ${Object.entries(typeCounts)
           .filter(([_, count]) => count > 0)
           .map(([type, count]) => `
-            <a href="/?type=${type}&sort=${sortField || 'createdAt'}&dir=${sortDirection || 'desc'}"
+            <a href="${buildFilterUrl({ type, tag: tagId })}"
                class="px-3 py-1.5 rounded-lg text-sm ${mediaType === type ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}">
               ${getMediaTypeIcon(type)} ${type.charAt(0).toUpperCase() + type.slice(1)} (${count})
             </a>
@@ -235,14 +632,14 @@ pageRoutes.get("/", async (c) => {
         <div class="flex flex-wrap gap-2 mb-4">
           <span class="text-gray-400 text-sm py-1.5">🏷️ Tags:</span>
           ${tags.map(tag => `
-            <a href="/?tag=${tag._id}"
+            <a href="${buildFilterUrl({ tag: tag._id, type: mediaType })}"
                class="px-3 py-1.5 rounded-full text-sm transition-colors ${tagId === tag._id ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}"
                style="${tag.color && tagId !== tag._id ? `border: 1px solid ${tag.color}` : ''}">
               ${tag.name}
             </a>
           `).join('')}
           ${tagId ? `
-            <a href="/?sort=${sortField || 'createdAt'}&dir=${sortDirection || 'desc'}"
+            <a href="${buildFilterUrl({ tag: undefined })}"
                class="px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white transition-colors">
               ✕ Clear tag filter
             </a>
@@ -278,41 +675,66 @@ pageRoutes.get("/", async (c) => {
     
     // Generate media cards
     const mediaCards = media.length > 0 
-      ? media.map((item: any) => `
-          <a href="/watch/${item._id}" 
-             class="bg-gray-800 rounded-lg overflow-hidden hover:ring-2 hover:ring-purple-500 transition-all group">
-            <div class="aspect-video bg-gray-700 flex items-center justify-center relative">
-              ${item.coverUrl 
-                ? `<img src="${item.coverUrl}" alt="${item.title}" class="w-full h-full object-cover">`
-                : item.thumbnail 
-                  ? `<img src="${item.thumbnail}" alt="${item.title}" class="w-full h-full object-cover">`
-                  : `<span class="text-6xl">${getMediaTypeIcon(item.mediaType || 'other')}</span>`
-              }
-              <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all flex items-center justify-center">
-                <span class="text-white text-4xl opacity-0 group-hover:opacity-100 transition-opacity">▶️</span>
+      ? media.map((item: any) => {
+          // Check if item has NSFW tag
+          const isNsfw = item.tags && item.tags.some((tagId: string) => nsfwTagIds.has(tagId));
+          const blurClass = isNsfw ? 'blur-xl' : '';
+          
+          let previewContent = '';
+          
+          if (item.mediaType === "image") {
+            previewContent = `<img src="/api/stream/${item._id}" alt="${item.title}" class="w-full h-full object-cover ${blurClass}" loading="lazy">`;
+          } else if (item.mediaType === "gif") {
+            previewContent = `<img src="/api/stream/${item._id}" alt="${item.title}" class="w-full h-full object-cover ${blurClass}" loading="lazy">`;
+          } else if (item.mediaType === "video") {
+            previewContent = `<img src="/api/stream/thumbnail/${item._id}" alt="${item.title}" class="w-full h-full object-cover ${blurClass}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><div class="hidden w-full h-full flex items-center justify-center"><span class="text-6xl">${getMediaTypeIcon(item.mediaType)}</span></div>`;
+          } else if (item.mediaType === "audio" && item.coverUrl) {
+            previewContent = `<img src="${item.coverUrl}" alt="${item.title}" class="w-full h-full object-cover ${blurClass}">`;
+          } else {
+            previewContent = `<span class="text-6xl">${getMediaTypeIcon(item.mediaType || 'other')}</span>`;
+          }
+          
+          return `
+            <a href="/watch/${item._id}" 
+               class="bg-gray-800 rounded-lg overflow-hidden hover:ring-2 hover:ring-purple-500 transition-all group">
+              <div class="aspect-video bg-gray-700 flex items-center justify-center relative overflow-hidden">
+                ${previewContent}
+                <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all flex items-center justify-center">
+                  <span class="text-white text-4xl opacity-0 group-hover:opacity-100 transition-opacity">▶️</span>
+                </div>
+                ${isNsfw ? `
+                  <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <span class="bg-red-600 bg-opacity-90 text-white text-xs px-2 py-1 rounded font-bold">NSFW</span>
+                  </div>
+                ` : ""}
+                ${item.duration ? `
+                  <span class="absolute bottom-2 right-2 bg-black bg-opacity-75 text-white text-xs px-2 py-1 rounded">
+                    ${formatVideoDuration(item.duration)}
+                  </span>
+                ` : ""}
+                ${item.year ? `
+                  <span class="absolute top-2 left-2 bg-purple-600 bg-opacity-90 text-white text-xs px-2 py-1 rounded">
+                    ${item.year}
+                  </span>
+                ` : ""}
+                ${item.mediaType === "gif" ? `
+                  <span class="absolute top-2 right-2 bg-blue-600 bg-opacity-90 text-white text-xs px-2 py-1 rounded">
+                    GIF
+                  </span>
+                ` : ""}
               </div>
-              ${item.duration ? `
-                <span class="absolute bottom-2 right-2 bg-black bg-opacity-75 text-white text-xs px-2 py-1 rounded">
-                  ${formatVideoDuration(item.duration)}
-                </span>
-              ` : ""}
-              ${item.year ? `
-                <span class="absolute top-2 left-2 bg-purple-600 bg-opacity-90 text-white text-xs px-2 py-1 rounded">
-                  ${item.year}
-                </span>
-              ` : ""}
-            </div>
-            <div class="p-4">
-              <h3 class="text-white font-medium truncate">${item.title}</h3>
-              <div class="flex items-center justify-between mt-1">
-                <p class="text-gray-400 text-sm">${formatBytes(item.size)}</p>
-                ${item.extension ? `<span class="text-gray-500 text-xs uppercase">.${item.extension}</span>` : ''}
+              <div class="p-4">
+                <h3 class="text-white font-medium truncate">${item.title}</h3>
+                <div class="flex items-center justify-between mt-1">
+                  <p class="text-gray-400 text-sm">${formatBytes(item.size)}</p>
+                  ${item.extension ? `<span class="text-gray-500 text-xs uppercase">.${item.extension}</span>` : ''}
+                </div>
+                ${item.artist ? `<p class="text-gray-500 text-sm truncate mt-1">${item.artist}</p>` : ''}
+                ${item.genre ? `<p class="text-gray-600 text-xs truncate mt-1">${item.genre}</p>` : ''}
               </div>
-              ${item.artist ? `<p class="text-gray-500 text-sm truncate mt-1">${item.artist}</p>` : ''}
-              ${item.genre ? `<p class="text-gray-600 text-xs truncate mt-1">${item.genre}</p>` : ''}
-            </div>
-          </a>
-        `).join("")
+            </a>
+          `;
+        }).join("")
       : `
           <div class="col-span-full text-center py-12">
             <span class="text-6xl mb-4 block">📭</span>
@@ -375,6 +797,43 @@ pageRoutes.get("/", async (c) => {
         </main>
         
         <script>
+          // Initialize search form hidden inputs from current URL params
+          (function() {
+            const url = new URL(window.location);
+            const searchInput = document.getElementById('search-input');
+            const sortInput = document.getElementById('search-sort');
+            const dirInput = document.getElementById('search-dir');
+            const typeInput = document.getElementById('search-type');
+            const tagInput = document.getElementById('search-tag');
+            const extInput = document.getElementById('search-ext');
+            
+            // Set search input value if present
+            const searchValue = url.searchParams.get('search');
+            if (searchInput && searchValue) {
+              searchInput.value = searchValue;
+            }
+            
+            // Set hidden inputs from current URL params
+            if (sortInput) sortInput.value = url.searchParams.get('sort') || '';
+            if (dirInput) dirInput.value = url.searchParams.get('dir') || '';
+            if (typeInput) typeInput.value = url.searchParams.get('type') || '';
+            if (tagInput) tagInput.value = url.searchParams.get('tag') || '';
+            if (extInput) extInput.value = url.searchParams.get('ext') || '';
+            
+            // Remove empty hidden inputs before form submit
+            const form = document.getElementById('search-form');
+            if (form) {
+              form.addEventListener('submit', function() {
+                const hiddenInputs = form.querySelectorAll('input[type="hidden"]');
+                hiddenInputs.forEach(function(input) {
+                  if (!input.value) {
+                    input.disabled = true;
+                  }
+                });
+              });
+            }
+          })();
+          
           function updateSort(value) {
             const [field, dir] = value.split('-');
             const url = new URL(window.location);
@@ -403,13 +862,13 @@ pageRoutes.get("/", async (c) => {
               const data = await res.json();
               
               if (data.success) {
-                alert(\`Scan complete! Found \${data.data.scanned} files, added \${data.data.added} new.\`);
-                window.location.reload();
+                ToastManager.success("Scan complete! Found " + data.data.scanned + " files, added " + data.data.added + " new.");
+                setTimeout(() => window.location.reload(), 1500);
               } else {
-                alert("Scan failed: " + data.error);
+                ToastManager.error("Scan failed: " + data.error);
               }
             } catch (err) {
-              alert("Scan failed: " + err.message);
+              ToastManager.error("Scan failed: " + err.message);
             } finally {
               btn.disabled = false;
               btn.textContent = "🔄 Scan for New Media";
@@ -426,19 +885,20 @@ pageRoutes.get("/", async (c) => {
               const data = await res.json();
               
               if (data.success) {
-                alert(data.message);
-                window.location.reload();
+                ToastManager.success(data.message);
+                setTimeout(() => window.location.reload(), 1500);
               } else {
-                alert("Metadata fetch failed: " + data.error);
+                ToastManager.error("Metadata fetch failed: " + data.error);
               }
             } catch (err) {
-              alert("Metadata fetch failed: " + err.message);
+              ToastManager.error("Metadata fetch failed: " + err.message);
             } finally {
               btn.disabled = false;
               btn.textContent = "📥 Fetch Metadata";
             }
           }
         </script>
+        ${notificationSystem()}
       </body>
       </html>
     `;
@@ -476,6 +936,22 @@ pageRoutes.get("/watch/:id", async (c) => {
     const id = c.req.param("id");
     
     const media = await convex.query(api.media.getById, { id: id as any });
+    const settings = await convex.query(api.settings.getAll, {});
+    const defaultQuality = settings.default_video_quality?.value || "720p";
+    
+    // Get all tags for tag editing
+    let allTags: Array<{ _id: string; name: string; color?: string; isNsfw?: boolean }> = [];
+    let nsfwTagIds: Set<string> = new Set();
+    try {
+      allTags = await convex.query(api.tags.list, {}) as any;
+      const nsfwTags = await convex.query(api.tags.getNsfwTags, {}) as any[];
+      nsfwTagIds = new Set(nsfwTags.map((t: any) => t._id));
+    } catch (e) {
+      console.log("Tags not available yet:", e);
+    }
+    
+    // Check if media has NSFW tag
+    const isNsfw = media?.tags && media.tags.some((tagId: string) => nsfwTagIds.has(tagId));
     
     if (!media) {
       return c.html(`
@@ -505,6 +981,11 @@ pageRoutes.get("/watch/:id", async (c) => {
     // Use auth.user for navbar to ensure correct role is displayed
     const navUser = auth.user ? { username: auth.user.username, role: auth.user.role } : undefined;
     
+    // Get media tags with details for display
+    const mediaTags = media.tags ? allTags.filter(t => media.tags!.includes(t._id as any)) : [];
+    const mediaTagsJson = JSON.stringify(mediaTags.map(t => t._id));
+    const allTagsJson = JSON.stringify(allTags);
+    
     const html = `
       <!DOCTYPE html>
       <html lang="en" class="dark">
@@ -512,7 +993,26 @@ pageRoutes.get("/watch/:id", async (c) => {
       <body class="bg-gray-900 text-white min-h-screen">
         ${navbar("", navUser)}
         
-        <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        ${isNsfw ? `
+        <!-- NSFW Warning Modal -->
+        <div id="nsfw-modal" class="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center">
+          <div class="bg-gray-800 rounded-lg p-8 max-w-md mx-4 text-center">
+            <span class="text-6xl mb-4 block">⚠️</span>
+            <h2 class="text-2xl font-bold mb-4 text-red-500">NSFW Content Warning</h2>
+            <p class="text-gray-300 mb-6">This content has been marked as NSFW (Not Safe For Work). Are you sure you want to view it?</p>
+            <div class="flex gap-4 justify-center">
+              <a href="/" class="bg-gray-600 hover:bg-gray-700 px-6 py-3 rounded-lg font-medium transition-colors">
+                Go Back
+              </a>
+              <button onclick="confirmNsfw()" class="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-lg font-medium transition-colors">
+                View Content
+              </button>
+            </div>
+          </div>
+        </div>
+        ` : ''}
+        
+        <main id="main-content" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 ${isNsfw ? 'hidden' : ''}">
           <a href="/" class="text-purple-400 hover:text-purple-300 mb-4 inline-block">
             ← Back to Library
           </a>
@@ -522,15 +1022,25 @@ pageRoutes.get("/watch/:id", async (c) => {
             <div class="lg:col-span-2">
               <div class="bg-gray-800 rounded-lg overflow-hidden">
                 ${isVideo ? `
-                  <div class="aspect-video bg-black">
+                  <div class="aspect-video bg-black relative" id="video-container">
                     <video id="player" 
                            class="w-full h-full" 
                            controls 
-                           autoplay
-                           preload="metadata">
-                      <source src="/api/stream/${id}" type="${media.mimeType}">
+                           preload="none"
+                           data-id="${media._id}">
                       Your browser does not support the video tag.
                     </video>
+                    <div id="transcode-overlay" class="absolute inset-0 bg-gray-900 flex flex-col items-center justify-center z-10" style="display: none;">
+                      <div class="text-center">
+                        <div class="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                        <p id="transcode-status" class="text-lg font-medium mb-2">Preparing video...</p>
+                        <div class="w-64 bg-gray-700 rounded-full h-2 mb-2">
+                          <div id="transcode-progress" class="bg-purple-500 h-2 rounded-full transition-all" style="width: 0%"></div>
+                        </div>
+                        <p id="transcode-percent" class="text-sm text-gray-400">0%</p>
+                        <p id="transcode-eta" class="text-xs text-gray-500 mt-1"></p>
+                      </div>
+                    </div>
                   </div>
                 ` : isAudio ? `
                   <div class="p-8 flex flex-col items-center justify-center bg-gradient-to-br from-purple-900 to-gray-900">
@@ -605,21 +1115,35 @@ pageRoutes.get("/watch/:id", async (c) => {
                   ${isVideo ? `
                     <div class="mt-6">
                       <h3 class="text-lg font-medium mb-3">Quality Options</h3>
-                      <div class="flex gap-2">
+                      <div class="flex flex-wrap gap-2">
                         <button onclick="changeQuality('480p')" 
-                                class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition-colors">
+                                id="btn-480p"
+                                class="quality-btn bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition-colors">
                           480p
                         </button>
                         <button onclick="changeQuality('720p')" 
-                                class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition-colors">
+                                id="btn-720p"
+                                class="quality-btn bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition-colors">
                           720p
                         </button>
                         <button onclick="changeQuality('1080p')" 
-                                class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition-colors">
+                                id="btn-1080p"
+                                class="quality-btn bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition-colors">
                           1080p
                         </button>
+                        <button onclick="changeQuality('1440p')" 
+                                id="btn-1440p"
+                                class="quality-btn bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition-colors">
+                          1440p
+                        </button>
+                        <button onclick="changeQuality('2160p')" 
+                                id="btn-2160p"
+                                class="quality-btn bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition-colors">
+                          4K
+                        </button>
                         <button onclick="changeQuality('')" 
-                                class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition-colors">
+                                id="btn-original"
+                                class="quality-btn bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition-colors">
                           Original
                         </button>
                       </div>
@@ -675,6 +1199,103 @@ pageRoutes.get("/watch/:id", async (c) => {
                   </button>
                 `}
               </div>
+              
+              <!-- Tags Section -->
+              <div class="bg-gray-800 rounded-lg p-4">
+                <h3 class="font-medium text-gray-300 mb-3">🏷️ Tags</h3>
+                <div id="current-tags" class="flex flex-wrap gap-2 mb-3">
+                  ${mediaTags.length > 0 ? mediaTags.map(tag => `
+                    <span class="tag-item inline-flex items-center gap-1 px-2 py-1 rounded-full text-sm"
+                          style="background-color: ${tag.color || '#6B7280'}20; border: 1px solid ${tag.color || '#6B7280'}"
+                          data-tag-id="${tag._id}">
+                      ${tag.isNsfw ? '🔞 ' : ''}${tag.name}
+                      <button onclick="removeTag('${tag._id}')" class="ml-1 text-gray-400 hover:text-red-400 text-xs">✕</button>
+                    </span>
+                  `).join('') : '<p class="text-gray-500 text-sm">No tags</p>'}
+                </div>
+                <div class="relative">
+                  <select id="add-tag-select" 
+                          onchange="addSelectedTag(this.value)"
+                          class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500">
+                    <option value="">Add a tag...</option>
+                    ${allTags.filter(t => !mediaTags.some(mt => mt._id === t._id)).map(tag => `
+                      <option value="${tag._id}" ${tag.isNsfw ? 'class="text-red-400"' : ''}>
+                        ${tag.isNsfw ? '🔞 ' : ''}${tag.name}
+                      </option>
+                    `).join('')}
+                  </select>
+                </div>
+              </div>
+              
+              <!-- Custom Metadata Section -->
+              <div class="bg-gray-800 rounded-lg p-4">
+                <div class="flex justify-between items-center mb-3">
+                  <h3 class="font-medium text-gray-300">✏️ Edit Info</h3>
+                  <button onclick="toggleEditMode()" id="edit-toggle" class="text-purple-400 hover:text-purple-300 text-sm">
+                    Edit
+                  </button>
+                </div>
+                <form id="metadata-form" class="space-y-3 hidden">
+                  <div>
+                    <label class="block text-xs text-gray-400 mb-1">Title</label>
+                    <input type="text" 
+                           id="edit-title" 
+                           value="${media.title.replace(/"/g, '&quot;')}"
+                           class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500">
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-400 mb-1">Description</label>
+                    <textarea id="edit-description" 
+                              rows="3"
+                              class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none">${media.description || ''}</textarea>
+                  </div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <div>
+                      <label class="block text-xs text-gray-400 mb-1">Year</label>
+                      <input type="number" 
+                             id="edit-year" 
+                             value="${media.year || ''}"
+                             placeholder="YYYY"
+                             class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500">
+                    </div>
+                    <div>
+                      <label class="block text-xs text-gray-400 mb-1">Genre</label>
+                      <input type="text" 
+                             id="edit-genre" 
+                             value="${(media.genre || '').replace(/"/g, '&quot;')}"
+                             class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500">
+                    </div>
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-400 mb-1">Artist / Author</label>
+                    <input type="text" 
+                           id="edit-artist" 
+                           value="${(media.artist || '').replace(/"/g, '&quot;')}"
+                           class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500">
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-400 mb-1">Album</label>
+                    <input type="text" 
+                           id="edit-album" 
+                           value="${(media.album || '').replace(/"/g, '&quot;')}"
+                           class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500">
+                  </div>
+                  <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="cancelEdit()" class="flex-1 bg-gray-600 hover:bg-gray-700 px-3 py-2 rounded text-sm transition-colors">
+                      Cancel
+                    </button>
+                    <button type="submit" class="flex-1 bg-purple-600 hover:bg-purple-700 px-3 py-2 rounded text-sm transition-colors">
+                      Save
+                    </button>
+                  </div>
+                </form>
+                <div id="metadata-display" class="space-y-2 text-sm">
+                  ${media.description ? `<p class="text-gray-400"><span class="text-gray-500">Description:</span> ${media.description.substring(0, 100)}${media.description.length > 100 ? '...' : ''}</p>` : ''}
+                  ${media.artist ? `<p class="text-gray-400"><span class="text-gray-500">Artist:</span> ${media.artist}</p>` : ''}
+                  ${media.album ? `<p class="text-gray-400"><span class="text-gray-500">Album:</span> ${media.album}</p>` : ''}
+                  ${!media.description && !media.artist && !media.album ? '<p class="text-gray-500">No custom metadata</p>' : ''}
+                </div>
+              </div>
             </div>
           </div>
         </main>
@@ -682,12 +1303,222 @@ pageRoutes.get("/watch/:id", async (c) => {
         <script>
           const player = document.getElementById("player");
           let currentTime = 0;
+          let transcodingEventSource = null;
+          let isTranscoding = false;
+          let transcodingStarted = false;
+          let currentQuality = "${defaultQuality}";
+          const mediaId = "${media._id}";
+          
+          const isNsfwContent = ${isNsfw ? 'true' : 'false'};
           
           if (player) {
+            // Don't auto-initialize for NSFW content - wait for user confirmation
+            if (!isNsfwContent) {
+              initVideoPlayer();
+            }
+            updateQualityButtons();
+            
             // Save current time before changing source
             player.addEventListener("timeupdate", () => {
               currentTime = player.currentTime;
             });
+            
+            // Handle video errors - might need transcoding
+            player.addEventListener("error", () => {
+              console.log("Video error, checking if transcoding is needed...");
+              if (!transcodingStarted) {
+                startTranscodingIfNeeded();
+              }
+            });
+          }
+          
+          async function initVideoPlayer() {
+            if (!player) return;
+            
+            try {
+              // Check if video needs transcoding
+              const res = await fetch("/api/stream/" + mediaId + "/info");
+              const data = await res.json();
+              
+              if (data.success && data.data.needsTranscoding) {
+                // Show transcode overlay and start transcoding
+                showTranscodeOverlay();
+                transcodingStarted = true;
+                const quality = currentQuality && data.data.availableQualities.includes(currentQuality) 
+                  ? currentQuality 
+                  : (data.data.availableQualities[1] || "720p");
+                startTranscoding(mediaId, quality, "mp4");
+              } else if (currentQuality) {
+                // User has a specific quality preference - use SSE endpoint to check if cached
+                // This shows progress overlay if transcoding is needed, or loads immediately if cached
+                showTranscodeOverlay();
+                transcodingStarted = true;
+                startTranscoding(mediaId, currentQuality, "mp4");
+              } else {
+                // No quality specified, play original directly
+                player.src = "/api/stream/" + mediaId;
+                player.load();
+                player.play().catch(e => {
+                  console.log("Autoplay prevented:", e.message);
+                });
+              }
+            } catch (err) {
+              console.error("Error checking transcoding status:", err);
+              // Try to play anyway
+              player.src = "/api/stream/" + mediaId;
+              player.load();
+              player.play().catch(e => {
+                console.log("Autoplay prevented:", e.message);
+              });
+            }
+          }
+          
+          function showTranscodeOverlay() {
+            const overlay = document.getElementById("transcode-overlay");
+            const progressBar = document.getElementById("transcode-progress");
+            const progressText = document.getElementById("transcode-percent");
+            const statusText = document.getElementById("transcode-status");
+            const etaText = document.getElementById("transcode-eta");
+            
+            if (overlay) {
+              overlay.style.display = "flex";
+              player.pause();
+            }
+          }
+          
+          function hideTranscodeOverlay() {
+            const overlay = document.getElementById("transcode-overlay");
+            if (overlay) {
+              overlay.style.display = "none";
+            }
+            
+            // Reset flags
+            isTranscoding = false;
+            transcodingStarted = false;
+            
+            // Close event source if open
+            if (transcodingEventSource) {
+              transcodingEventSource.close();
+              transcodingEventSource = null;
+            }
+          }
+          
+          function startTranscoding(mediaId, quality, format) {
+            // Close any existing connection
+            if (transcodingEventSource) {
+              transcodingEventSource.close();
+            }
+            
+            isTranscoding = true;
+            let transcodingComplete = false;
+            const progressBar = document.getElementById("transcode-progress");
+            const progressText = document.getElementById("transcode-percent");
+            const statusText = document.getElementById("transcode-status");
+            const etaText = document.getElementById("transcode-eta");
+            
+            // Connect to progress stream
+            transcodingEventSource = new EventSource("/api/stream/" + mediaId + "/transcode-progress?quality=" + quality + "&format=" + format);
+            
+            transcodingEventSource.onmessage = function(event) {
+              try {
+                const data = JSON.parse(event.data);
+                
+                if (data.event === "status") {
+                  if (statusText) statusText.textContent = data.message;
+                } else if (data.event === "progress") {
+                  if (progressBar) progressBar.style.width = data.percent + "%";
+                  if (progressText) progressText.textContent = Math.round(data.percent) + "%";
+                  if (statusText) statusText.textContent = data.message;
+                  if (etaText && data.eta) etaText.textContent = "ETA: " + data.eta;
+                } else if (data.event === "heartbeat") {
+                  // Ignore heartbeat events, just connection keep-alive
+                  return;
+                } else if (data.event === "complete") {
+                  transcodingComplete = true;
+                  hideTranscodeOverlay();
+                  
+                  // Update player source
+                  if (player) {
+                    player.src = "/api/stream/" + mediaId + "?quality=" + quality;
+                    player.load();
+                    
+                    // Restore playback position if we had one
+                    if (currentTime > 0) {
+                      player.currentTime = currentTime;
+                    }
+                    
+                    // Try to play
+                    player.play().catch(e => {
+                      console.log("Playback error:", e.message);
+                    });
+                  }
+                } else if (data.event === "error") {
+                  if (statusText) statusText.textContent = "Error: " + data.message;
+                  statusText.classList.add("text-red-500");
+                  console.error("Transcoding error:", data.message);
+                  isTranscoding = false;
+                  transcodingStarted = false;
+                }
+              } catch (err) {
+                console.error("Error parsing progress event:", err);
+              }
+            };
+            
+            transcodingEventSource.onerror = function() {
+              // Only treat as error if transcoding didn't complete
+              // EventSource triggers onerror when connection closes, even after "complete" event
+              if (!transcodingComplete) {
+                console.error("Transcoding stream error or connection closed prematurely");
+                
+                // Wait a moment before falling back to give transcoding a chance to complete
+                setTimeout(() => {
+                  if (!transcodingComplete) {
+                    isTranscoding = false;
+                    transcodingStarted = false;
+                    
+                    // Try to play the requested quality anyway (it might have completed server-side)
+                    if (player) {
+                      player.src = "/api/stream/" + mediaId + "?quality=" + quality;
+                      player.load();
+                      player.play().catch(e => {
+                        // If that fails, try original
+                        console.log("Quality stream failed, trying original:", e.message);
+                        player.src = "/api/stream/" + mediaId;
+                        player.load();
+                        player.play().catch(() => {});
+                      });
+                    }
+                  }
+                }, 2000); // Wait 2 seconds before falling back
+              } else {
+                // Connection closed normally after completion
+                isTranscoding = false;
+                transcodingStarted = false;
+              }
+            };
+          }
+          
+          async function startTranscodingIfNeeded() {
+            // This function is called when video fails to load
+            if (transcodingStarted || isTranscoding) return;
+            
+            showTranscodeOverlay();
+            transcodingStarted = true;
+            
+            // Get stream info first
+            try {
+              const res = await fetch("/api/stream/" + mediaId + "/info");
+              const data = await res.json();
+              
+              if (data.success && data.data.availableQualities) {
+                const quality = currentQuality && data.data.availableQualities.includes(currentQuality) 
+                  ? currentQuality 
+                  : (data.data.availableQualities[1] || "720p");
+                startTranscoding(mediaId, quality, "mp4");
+              }
+            } catch (err) {
+              console.error("Error getting stream info:", err);
+            }
           }
           
           // Toggle fullscreen for images
@@ -714,24 +1545,141 @@ pageRoutes.get("/watch/:id", async (c) => {
             }
           }
           
+          function updateQualityButtons() {
+            const qualities = ['480p', '720p', '1080p', '1440p', '2160p', 'original'];
+            qualities.forEach(q => {
+              const btn = document.getElementById('btn-' + q);
+              if (btn) {
+                const isActive = currentQuality === q || (q === 'original' && currentQuality === '');
+                if (isActive) {
+                  btn.classList.remove('bg-gray-700', 'hover:bg-gray-600');
+                  btn.classList.add('bg-purple-600', 'hover:bg-purple-700');
+                } else {
+                  btn.classList.remove('bg-purple-600', 'hover:bg-purple-700');
+                  btn.classList.add('bg-gray-700', 'hover:bg-gray-600');
+                }
+              }
+            });
+          }
+          
           function changeQuality(quality) {
             if (!player) return;
+            
+            // If switching to original or no quality specified, load directly
+            if (!quality) {
+              currentQuality = quality;
+              updateQualityButtons();
+              const savedTime = currentTime;
+              const wasPlaying = !player.paused;
+              
+              player.src = "/api/stream/" + mediaId;
+              player.load();
+              
+              player.addEventListener("loadedmetadata", function onLoad() {
+                player.currentTime = savedTime;
+                if (wasPlaying) player.play();
+                player.removeEventListener("loadedmetadata", onLoad);
+              });
+              return;
+            }
+            
+            // For quality changes, always use the SSE endpoint
+            // It will return "complete" immediately if the file is cached
             const savedTime = currentTime;
             const wasPlaying = !player.paused;
+            currentQuality = quality;
+            updateQualityButtons();
             
-            // Update source
-            const baseUrl = "/api/stream/${id}";
-            const url = quality ? baseUrl + "?quality=" + quality : baseUrl;
+            // Show transcode overlay immediately - it will hide quickly if cached
+            showTranscodeOverlay();
+            transcodingStarted = true;
             
-            player.src = url;
-            player.load();
+            // Close any existing connection
+            if (transcodingEventSource) {
+              transcodingEventSource.close();
+            }
             
-            // Restore position and play state
-            player.addEventListener("loadedmetadata", function onLoad() {
-              player.currentTime = savedTime;
-              if (wasPlaying) player.play();
-              player.removeEventListener("loadedmetadata", onLoad);
-            });
+            isTranscoding = true;
+            let transcodingComplete = false;
+            const progressBar = document.getElementById("transcode-progress");
+            const progressText = document.getElementById("transcode-percent");
+            const statusText = document.getElementById("transcode-status");
+            const etaText = document.getElementById("transcode-eta");
+            
+            // Connect to progress stream
+            transcodingEventSource = new EventSource("/api/stream/" + mediaId + "/transcode-progress?quality=" + quality + "&format=mp4");
+            
+            transcodingEventSource.onmessage = function(event) {
+              try {
+                const data = JSON.parse(event.data);
+                
+                if (data.event === "status") {
+                  if (statusText) statusText.textContent = data.message;
+                } else if (data.event === "progress") {
+                  if (progressBar) progressBar.style.width = data.percent + "%";
+                  if (progressText) progressText.textContent = Math.round(data.percent) + "%";
+                  if (statusText) statusText.textContent = data.message || "Transcoding...";
+                  if (etaText && data.eta) etaText.textContent = "ETA: " + data.eta;
+                } else if (data.event === "heartbeat") {
+                  return;
+                } else if (data.event === "complete") {
+                  transcodingComplete = true;
+                  hideTranscodeOverlay();
+                  
+                  // Update player source
+                  if (player) {
+                    player.src = "/api/stream/" + mediaId + "?quality=" + quality;
+                    player.load();
+                    
+                    player.addEventListener("loadedmetadata", function onLoad() {
+                      player.currentTime = savedTime;
+                      if (wasPlaying) player.play();
+                      player.removeEventListener("loadedmetadata", onLoad);
+                    });
+                  }
+                  
+                  transcodingEventSource.close();
+                  transcodingEventSource = null;
+                } else if (data.event === "error") {
+                  if (statusText) statusText.textContent = "Error: " + data.message;
+                  statusText.classList.add("text-red-500");
+                  console.error("Transcoding error:", data.message);
+                  isTranscoding = false;
+                  transcodingStarted = false;
+                }
+              } catch (err) {
+                console.error("Error parsing progress event:", err);
+              }
+            };
+            
+            transcodingEventSource.onerror = function() {
+              if (!transcodingComplete) {
+                console.error("Transcoding stream error or connection closed prematurely");
+                
+                setTimeout(() => {
+                  if (!transcodingComplete) {
+                    isTranscoding = false;
+                    transcodingStarted = false;
+                    hideTranscodeOverlay();
+                    
+                    // Try to play anyway
+                    if (player) {
+                      player.src = "/api/stream/" + mediaId + "?quality=" + quality;
+                      player.load();
+                      
+                      player.addEventListener("loadedmetadata", function onLoad() {
+                        player.currentTime = savedTime;
+                        if (wasPlaying) player.play();
+                        player.removeEventListener("loadedmetadata", onLoad);
+                      });
+                    }
+                  }
+                }, 2000);
+              } else {
+                isTranscoding = false;
+                transcodingStarted = false;
+              }
+            };
           }
           
           async function fetchMetadata(mediaId) {
@@ -744,13 +1692,13 @@ pageRoutes.get("/watch/:id", async (c) => {
               const data = await res.json();
               
               if (data.success) {
-                alert("Metadata fetched successfully!");
-                window.location.reload();
+                ToastManager.success("Metadata fetched successfully!");
+                setTimeout(() => window.location.reload(), 1500);
               } else {
-                alert("Failed to fetch metadata: " + data.error);
+                ToastManager.error("Failed to fetch metadata: " + data.error);
               }
             } catch (err) {
-              alert("Failed to fetch metadata: " + err.message);
+              ToastManager.error("Failed to fetch metadata: " + err.message);
             } finally {
               btn.disabled = false;
               btn.textContent = "📥 Fetch Metadata";
@@ -767,19 +1715,164 @@ pageRoutes.get("/watch/:id", async (c) => {
               const data = await res.json();
               
               if (data.success) {
-                alert("Metadata refreshed successfully!");
-                window.location.reload();
+                ToastManager.success("Metadata refreshed successfully!");
+                setTimeout(() => window.location.reload(), 1500);
               } else {
-                alert("Failed to refresh metadata: " + data.error);
+                ToastManager.error("Failed to refresh metadata: " + data.error);
               }
             } catch (err) {
-              alert("Failed to refresh metadata: " + err.message);
+              ToastManager.error("Failed to refresh metadata: " + err.message);
             } finally {
               btn.disabled = false;
               btn.textContent = "🔄 Refresh Metadata";
             }
           }
+          
+          // NSFW confirmation
+          function confirmNsfw() {
+            const modal = document.getElementById("nsfw-modal");
+            const mainContent = document.getElementById("main-content");
+            if (modal) modal.style.display = "none";
+            if (mainContent) mainContent.classList.remove("hidden");
+            
+            // If there's a video player, initialize it after confirmation
+            if (player) {
+              initVideoPlayer();
+            }
+          }
+          
+          // Tag management
+          const allTags = ${allTagsJson};
+          let currentTags = ${mediaTagsJson};
+          
+          async function addSelectedTag(tagId) {
+            if (!tagId) return;
+            
+            try {
+              const res = await fetch("/api/tags/" + tagId + "/media/" + mediaId, { method: "POST" });
+              const data = await res.json();
+              
+              if (data.success) {
+                ToastManager.success("Tag added successfully!");
+                setTimeout(() => window.location.reload(), 1000);
+              } else {
+                ToastManager.error("Failed to add tag: " + data.error);
+              }
+            } catch (err) {
+              ToastManager.error("Failed to add tag: " + err.message);
+            }
+            
+            // Reset select
+            document.getElementById("add-tag-select").value = "";
+          }
+          
+          async function removeTag(tagId) {
+            const confirmed = await ConfirmModal.show({
+              title: "Remove Tag",
+              message: "Are you sure you want to remove this tag from this media?",
+              confirmText: "Remove",
+              type: "warning"
+            });
+            if (!confirmed) return;
+            
+            try {
+              const res = await fetch("/api/tags/" + tagId + "/media/" + mediaId, { method: "DELETE" });
+              const data = await res.json();
+              
+              if (data.success) {
+                ToastManager.success("Tag removed successfully!");
+                setTimeout(() => window.location.reload(), 1000);
+              } else {
+                ToastManager.error("Failed to remove tag: " + data.error);
+              }
+            } catch (err) {
+              ToastManager.error("Failed to remove tag: " + err.message);
+            }
+          }
+          
+          // Metadata editing
+          let editMode = false;
+          
+          function toggleEditMode() {
+            editMode = !editMode;
+            const form = document.getElementById("metadata-form");
+            const display = document.getElementById("metadata-display");
+            const toggle = document.getElementById("edit-toggle");
+            
+            if (editMode) {
+              form.classList.remove("hidden");
+              display.classList.add("hidden");
+              toggle.textContent = "Cancel";
+            } else {
+              form.classList.add("hidden");
+              display.classList.remove("hidden");
+              toggle.textContent = "Edit";
+            }
+          }
+          
+          function cancelEdit() {
+            editMode = false;
+            const form = document.getElementById("metadata-form");
+            const display = document.getElementById("metadata-display");
+            const toggle = document.getElementById("edit-toggle");
+            
+            form.classList.add("hidden");
+            display.classList.remove("hidden");
+            toggle.textContent = "Edit";
+          }
+          
+          // Handle metadata form submission
+          document.getElementById("metadata-form")?.addEventListener("submit", async function(e) {
+            e.preventDefault();
+            
+            const title = document.getElementById("edit-title").value.trim();
+            const description = document.getElementById("edit-description").value.trim();
+            const year = document.getElementById("edit-year").value ? parseInt(document.getElementById("edit-year").value) : undefined;
+            const genre = document.getElementById("edit-genre").value.trim() || undefined;
+            const artist = document.getElementById("edit-artist").value.trim() || undefined;
+            const album = document.getElementById("edit-album").value.trim() || undefined;
+            
+            if (!title) {
+              ToastManager.warning("Title is required");
+              document.getElementById("edit-title").focus();
+              return;
+            }
+            
+            const submitBtn = this.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Saving...";
+            
+            try {
+              const res = await fetch("/api/media/" + mediaId, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  title,
+                  description: description || undefined,
+                  year,
+                  genre,
+                  artist,
+                  album
+                })
+              });
+              
+              const data = await res.json();
+              
+              if (data.success) {
+                ToastManager.success("Changes saved successfully!");
+                setTimeout(() => window.location.reload(), 1500);
+              } else {
+                ToastManager.error("Failed to save: " + data.error);
+              }
+            } catch (err) {
+              ToastManager.error("Failed to save: " + err.message);
+            } finally {
+              submitBtn.disabled = false;
+              submitBtn.textContent = "Save";
+            }
+          });
         </script>
+        ${notificationSystem()}
       </body>
       </html>
     `;
@@ -1086,6 +2179,8 @@ pageRoutes.get("/admin", async (c) => {
                     <option value="480p" ${settings.default_video_quality?.value === "480p" ? "selected" : ""}>480p</option>
                     <option value="720p" ${settings.default_video_quality?.value === "720p" || !settings.default_video_quality?.value ? "selected" : ""}>720p</option>
                     <option value="1080p" ${settings.default_video_quality?.value === "1080p" ? "selected" : ""}>1080p</option>
+                    <option value="1440p" ${settings.default_video_quality?.value === "1440p" ? "selected" : ""}>1440p</option>
+                    <option value="2160p" ${settings.default_video_quality?.value === "2160p" ? "selected" : ""}>4K (2160p)</option>
                   </select>
                 </div>
                 <div>
@@ -1164,12 +2259,12 @@ pageRoutes.get("/admin", async (c) => {
               const data = await res.json();
               
               if (data.success) {
-                alert("Settings saved successfully!");
+                ToastManager.success("Settings saved successfully!");
               } else {
-                alert("Failed to save settings: " + data.error);
+                ToastManager.error("Failed to save settings: " + data.error);
               }
             } catch (err) {
-              alert("Failed to save settings: " + err.message);
+              ToastManager.error("Failed to save settings: " + err.message);
             }
           });
           
@@ -1193,53 +2288,66 @@ pageRoutes.get("/admin", async (c) => {
               const data = await res.json();
               
               if (data.success && data.data.connected) {
-                alert("✅ Successfully connected to R2!");
+                ToastManager.success("Successfully connected to R2!");
               } else {
-                alert("❌ Connection failed: " + (data.data?.message || data.error));
+                ToastManager.error("Connection failed: " + (data.data?.message || data.error));
               }
             } catch (err) {
-              alert("❌ Connection test failed: " + err.message);
+              ToastManager.error("Connection test failed: " + err.message);
             }
           }
           
           // Run R2 backup
           async function runR2Backup() {
-            if (!confirm("Start backup of all unbacked-up media to R2?")) return;
+            const confirmed = await ConfirmModal.show({
+              title: "Start R2 Backup",
+              message: "This will backup all unbacked-up media files to R2 cloud storage. This may take a while depending on the number of files.",
+              confirmText: "Start Backup",
+              type: "info"
+            });
+            if (!confirmed) return;
             
             try {
               const res = await fetch("/api/admin/r2/backup", { method: "POST" });
               const data = await res.json();
               
               if (data.success) {
-                alert(\`Backup complete! Backed up \${data.data.backed} files.\`);
-                window.location.reload();
+                ToastManager.success("Backup complete! Backed up " + data.data.backed + " files.");
+                setTimeout(() => window.location.reload(), 2000);
               } else {
-                alert("Backup failed: " + data.error);
+                ToastManager.error("Backup failed: " + data.error);
               }
             } catch (err) {
-              alert("Backup failed: " + err.message);
+              ToastManager.error("Backup failed: " + err.message);
             }
           }
           
           // Run cache cleanup
           async function runCacheCleanup() {
-            if (!confirm("Run cache cleanup? This will delete expired and excess cached files.")) return;
+            const confirmed = await ConfirmModal.show({
+              title: "Run Cache Cleanup",
+              message: "This will delete expired and excess cached files to free up disk space. This action cannot be undone.",
+              confirmText: "Run Cleanup",
+              type: "warning"
+            });
+            if (!confirmed) return;
             
             try {
               const res = await fetch("/api/admin/cache/cleanup", { method: "POST" });
               const data = await res.json();
               
               if (data.success) {
-                alert(\`Cleanup complete! Deleted \${data.data.filesDeleted} files, freed \${data.data.bytesFreedFormatted}.\`);
-                window.location.reload();
+                ToastManager.success("Cleanup complete! Deleted " + data.data.filesDeleted + " files, freed " + data.data.bytesFreedFormatted + ".");
+                setTimeout(() => window.location.reload(), 2000);
               } else {
-                alert("Cleanup failed: " + data.error);
+                ToastManager.error("Cleanup failed: " + data.error);
               }
             } catch (err) {
-              alert("Cleanup failed: " + err.message);
+              ToastManager.error("Cleanup failed: " + err.message);
             }
           }
         </script>
+        ${notificationSystem()}
       </body>
       </html>
     `;
@@ -1727,7 +2835,7 @@ pageRoutes.get("/upload", async (c) => {
             const pendingItems = uploadQueue.filter(item => item.status === 'pending');
             
             if (pendingItems.length === 0) {
-              alert('No files to upload');
+              ToastManager.warning('No files to upload');
               return;
             }
             
@@ -1907,6 +3015,7 @@ pageRoutes.get("/upload", async (c) => {
             }
           }
         </script>
+        ${notificationSystem()}
       </body>
       </html>
     `;
@@ -2338,7 +3447,7 @@ pageRoutes.get("/settings/tags", async (c) => {
             const color = tagColorTextInput.value.trim() || null;
             
             if (!name) {
-              alert('Please enter a tag name');
+              ToastManager.warning('Please enter a tag name');
               tagNameInput.focus();
               return;
             }
@@ -2356,59 +3465,70 @@ pageRoutes.get("/settings/tags", async (c) => {
               const data = await res.json();
               
               if (data.success) {
-                window.location.reload();
+                ToastManager.success(id ? 'Tag updated successfully!' : 'Tag created successfully!');
+                setTimeout(() => window.location.reload(), 1000);
               } else {
-                alert('Failed to save tag: ' + data.error);
+                ToastManager.error('Failed to save tag: ' + data.error);
               }
             } catch (err) {
-              alert('Failed to save tag: ' + err.message);
+              ToastManager.error('Failed to save tag: ' + err.message);
             }
           }
           
           async function deleteTag(id, name, usageCount) {
             if (usageCount > 0) {
-              alert('Cannot delete tag "' + name + '" because it is used by ' + usageCount + ' file(s). Remove the tag from all files first.');
+              ToastManager.error('Cannot delete tag "' + name + '" because it is used by ' + usageCount + ' file(s). Remove the tag from all files first.');
               return;
             }
             
-            if (!confirm('Are you sure you want to delete the tag "' + name + '"?')) {
-              return;
-            }
+            const confirmed = await ConfirmModal.show({
+              title: 'Delete Tag',
+              message: 'Are you sure you want to delete the tag "' + name + '"? This action cannot be undone.',
+              confirmText: 'Delete',
+              type: 'danger'
+            });
+            if (!confirmed) return;
             
             try {
               const res = await fetch('/api/tags/' + id, { method: 'DELETE' });
               const data = await res.json();
               
               if (data.success) {
+                ToastManager.success('Tag deleted successfully!');
                 document.querySelector('[data-tag-id="' + id + '"]')?.remove();
               } else {
-                alert('Failed to delete tag: ' + data.error);
+                ToastManager.error('Failed to delete tag: ' + data.error);
               }
             } catch (err) {
-              alert('Failed to delete tag: ' + err.message);
+              ToastManager.error('Failed to delete tag: ' + err.message);
             }
           }
           
           async function createDefaultTags() {
-            if (!confirm('Create default tags (Movies, Music, Pictures, etc.)?')) {
-              return;
-            }
+            const confirmed = await ConfirmModal.show({
+              title: 'Create Default Tags',
+              message: 'This will create a set of default tags (Movies, Music, Pictures, etc.) to help organize your media library.',
+              confirmText: 'Create Tags',
+              type: 'info'
+            });
+            if (!confirmed) return;
             
             try {
               const res = await fetch('/api/tags/defaults', { method: 'POST' });
               const data = await res.json();
               
               if (data.success) {
-                alert('Created ' + data.data.created + ' default tags');
-                window.location.reload();
+                ToastManager.success('Created ' + data.data.created + ' default tags!');
+                setTimeout(() => window.location.reload(), 1500);
               } else {
-                alert('Failed to create default tags: ' + data.error);
+                ToastManager.error('Failed to create default tags: ' + data.error);
               }
             } catch (err) {
-              alert('Failed to create default tags: ' + err.message);
+              ToastManager.error('Failed to create default tags: ' + err.message);
             }
           }
         </script>
+        ${notificationSystem()}
       </body>
       </html>
     `;
