@@ -77,6 +77,12 @@ const DEFAULT_SETTINGS: Record<string, { value: string; description: string }> =
     description: "Output format for transcoded videos (mp4, webm)",
   },
   
+  // Metadata Settings
+  tmdb_api_key: {
+    value: "",
+    description: "TheMovieDB API key for fetching movie and TV show metadata",
+  },
+  
   // System Settings
   app_name: {
     value: "CottMV",

@@ -33,10 +33,21 @@ import {
 } from "../../media/utils.js";
 import { expandPath } from "../../storage/local.js";
 
+// Type for Hono context variables
+type Variables = {
+  convex: ConvexHttpClient;
+  user?: {
+    _id: string;
+    githubId: string;
+    username: string;
+    role: string;
+  };
+};
+
 /**
  * Create the media routes
  */
-export const mediaRoutes = new Hono();
+export const mediaRoutes = new Hono<{ Variables: Variables }>();
 
 /**
  * GET /api/media

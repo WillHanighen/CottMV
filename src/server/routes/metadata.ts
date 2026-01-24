@@ -29,10 +29,22 @@ const metadataRoutes = new Hono<{ Variables: Variables }>();
 const metadataService = createMetadataService();
 
 /**
+ * Helper to ensure TMDB is configured from database settings
+ */
+async function ensureTMDBConfigured(convex: ConvexHttpClient): Promise<void> {
+  // Get API key from settings
+  const apiKey = await convex.query(api.settings.get, { key: "tmdb_api_key" });
+  if (apiKey) {
+    metadataService.configureTMDB(apiKey);
+  }
+}
+
+/**
  * Search for metadata
  * Query params: q (query), type (video|audio|document), year (optional)
  */
 metadataRoutes.get("/search", async (c) => {
+  const convex = c.get("convex");
   const query = c.req.query("q");
   const type = c.req.query("type") || "video";
   const yearStr = c.req.query("year");
@@ -46,6 +58,8 @@ metadataRoutes.get("/search", async (c) => {
     let results: unknown[] = [];
     
     if (type === "video") {
+      // Ensure TMDB is configured from settings
+      await ensureTMDBConfigured(convex);
       results = await metadataService.searchVideos(query, year);
     } else if (type === "audio") {
       // MusicBrainz search
@@ -58,7 +72,7 @@ metadataRoutes.get("/search", async (c) => {
         title: r.title,
         artist: r["artist-credit"]?.[0]?.artist?.name,
         album: r.releases?.[0]?.title,
-        year: r["first-release-date"]?.slice(0, 4),
+        year: r.releases?.[0]?.date?.slice(0, 4),
       }));
     } else if (type === "document") {
       // Open Library search
@@ -91,6 +105,9 @@ metadataRoutes.post("/fetch/:id", async (c) => {
   const mediaId = c.req.param("id") as Id<"media">;
   
   try {
+    // Ensure TMDB is configured from settings
+    await ensureTMDBConfigured(convex);
+    
     // Get the media item
     const media = await convex.query(api.media.get, { id: mediaId });
     
@@ -208,6 +225,9 @@ metadataRoutes.post("/batch-fetch", async (c) => {
   const convex = c.get("convex");
   
   try {
+    // Ensure TMDB is configured from settings
+    await ensureTMDBConfigured(convex);
+    
     // Get media items without metadata
     const mediaItems = await convex.query(api.media.getWithoutMetadata, { limit: 20 });
     
@@ -269,6 +289,11 @@ metadataRoutes.post("/batch-fetch", async (c) => {
  * Get metadata service status
  */
 metadataRoutes.get("/status", async (c) => {
+  const convex = c.get("convex");
+  
+  // Ensure TMDB is configured from settings before checking status
+  await ensureTMDBConfigured(convex);
+  
   return c.json({
     tmdb: {
       configured: metadataService.isTMDBConfigured(),

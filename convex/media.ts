@@ -246,13 +246,14 @@ export const search = query({
     let allMedia = await ctx.db.query("media").collect();
     const searchLower = args.searchTerm.toLowerCase();
     
-    // Filter by search term
+    // Filter by search term (includes OCR text for searching text in images/videos)
     let results = allMedia.filter((m) => 
       m.title.toLowerCase().includes(searchLower) ||
       m.filename.toLowerCase().includes(searchLower) ||
       (m.description && m.description.toLowerCase().includes(searchLower)) ||
       (m.artist && m.artist.toLowerCase().includes(searchLower)) ||
-      (m.album && m.album.toLowerCase().includes(searchLower))
+      (m.album && m.album.toLowerCase().includes(searchLower)) ||
+      (m.ocrText && m.ocrText.toLowerCase().includes(searchLower))
     );
     
     // Filter by media type if specified
@@ -338,6 +339,7 @@ export const create = mutation({
     duration: v.optional(v.number()),
     thumbnail: v.optional(v.string()),
     coverUrl: v.optional(v.string()),
+    customCover: v.optional(v.string()),
     // External metadata
     externalId: v.optional(v.string()),
     externalSource: v.optional(v.string()),
@@ -346,6 +348,10 @@ export const create = mutation({
     genre: v.optional(v.string()),
     artist: v.optional(v.string()),
     album: v.optional(v.string()),
+    // OCR text for search
+    ocrText: v.optional(v.string()),
+    // OCR attempted flag
+    ocrAttempted: v.optional(v.boolean()),
     // Tags
     tags: v.optional(v.array(v.id("tags"))),
     // File hash for duplicate detection
@@ -365,6 +371,7 @@ export const create = mutation({
       duration: args.duration,
       thumbnail: args.thumbnail,
       coverUrl: args.coverUrl,
+      customCover: args.customCover,
       r2BackedUp: false,
       // External metadata
       externalId: args.externalId,
@@ -375,6 +382,10 @@ export const create = mutation({
       artist: args.artist,
       album: args.album,
       metadataFetchedAt: args.externalId ? now : undefined,
+      // OCR text
+      ocrText: args.ocrText,
+      // OCR attempted flag
+      ocrAttempted: args.ocrAttempted,
       // Tags
       tags: args.tags,
       // File hash
@@ -401,6 +412,7 @@ export const update = mutation({
     duration: v.optional(v.number()),
     thumbnail: v.optional(v.string()),
     coverUrl: v.optional(v.string()),
+    customCover: v.optional(v.string()),
     r2Key: v.optional(v.string()),
     r2BackedUp: v.optional(v.boolean()),
     // External metadata
@@ -412,6 +424,10 @@ export const update = mutation({
     artist: v.optional(v.string()),
     album: v.optional(v.string()),
     metadataFetchedAt: v.optional(v.number()),
+    // OCR text for search
+    ocrText: v.optional(v.string()),
+    // OCR attempted flag (prevents re-scanning failed files)
+    ocrAttempted: v.optional(v.boolean()),
     // Tags
     tags: v.optional(v.array(v.id("tags"))),
   },
@@ -427,6 +443,7 @@ export const update = mutation({
     if (updates.duration !== undefined) fieldsToUpdate.duration = updates.duration;
     if (updates.thumbnail !== undefined) fieldsToUpdate.thumbnail = updates.thumbnail;
     if (updates.coverUrl !== undefined) fieldsToUpdate.coverUrl = updates.coverUrl;
+    if (updates.customCover !== undefined) fieldsToUpdate.customCover = updates.customCover;
     if (updates.r2Key !== undefined) fieldsToUpdate.r2Key = updates.r2Key;
     if (updates.r2BackedUp !== undefined) fieldsToUpdate.r2BackedUp = updates.r2BackedUp;
     // External metadata
@@ -438,6 +455,10 @@ export const update = mutation({
     if (updates.artist !== undefined) fieldsToUpdate.artist = updates.artist;
     if (updates.album !== undefined) fieldsToUpdate.album = updates.album;
     if (updates.metadataFetchedAt !== undefined) fieldsToUpdate.metadataFetchedAt = updates.metadataFetchedAt;
+    // OCR text
+    if (updates.ocrText !== undefined) fieldsToUpdate.ocrText = updates.ocrText;
+    // OCR attempted flag
+    if (updates.ocrAttempted !== undefined) fieldsToUpdate.ocrAttempted = updates.ocrAttempted;
     // Tags
     if (updates.tags !== undefined) fieldsToUpdate.tags = updates.tags;
     
@@ -681,6 +702,186 @@ export const getWithoutMetadata = query({
     }
     
     return results;
+  },
+});
+
+/**
+ * Get media files without OCR text that haven't been attempted yet
+ * 
+ * Usage: Called to find files that need OCR processing
+ * Returns: Array of media objects that support OCR but haven't been attempted
+ */
+export const getWithoutOCR = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    let results = await ctx.db.query("media").collect();
+    
+    // Filter to items that support OCR (image, gif, video) and haven't been attempted
+    results = results.filter((m) => 
+      (m.mediaType === "image" || m.mediaType === "gif" || m.mediaType === "video") &&
+      !m.ocrAttempted
+    );
+    
+    // Apply limit
+    if (args.limit && args.limit > 0) {
+      results = results.slice(0, args.limit);
+    }
+    
+    return results;
+  },
+});
+
+/**
+ * Get OCR statistics
+ * 
+ * Usage: Display OCR status in admin dashboard
+ * Returns: Object with OCR processing stats
+ */
+export const getOCRStats = query({
+  args: {},
+  handler: async (ctx) => {
+    const allMedia = await ctx.db.query("media").collect();
+    
+    // Count media that supports OCR
+    const ocrSupportedTypes = ["image", "gif", "video"];
+    const ocrSupported = allMedia.filter((m) => ocrSupportedTypes.includes(m.mediaType));
+    const withOCR = ocrSupported.filter((m) => m.ocrText);
+    const attempted = ocrSupported.filter((m) => m.ocrAttempted);
+    const pending = ocrSupported.filter((m) => !m.ocrAttempted);
+    
+    return {
+      totalSupported: ocrSupported.length,
+      withOCR: withOCR.length,
+      attempted: attempted.length,
+      pending: pending.length,
+      // withoutOCR is now "pending" - files not yet attempted
+      withoutOCR: pending.length,
+      percentage: ocrSupported.length > 0
+        ? Math.round((attempted.length / ocrSupported.length) * 100)
+        : 100,
+    };
+  },
+});
+
+/**
+ * Get media files where OCR was attempted but failed (no text extracted)
+ * 
+ * Usage: Find files that might need OCR retry
+ * Returns: Array of media IDs that failed OCR
+ */
+export const getFailedOCR = query({
+  args: {},
+  handler: async (ctx) => {
+    const allMedia = await ctx.db.query("media").collect();
+    
+    // Files where OCR was attempted but resulted in no text (empty string or undefined)
+    const ocrSupportedTypes = ["image", "gif", "video"];
+    const failed = allMedia.filter((m) => 
+      ocrSupportedTypes.includes(m.mediaType) &&
+      m.ocrAttempted === true &&
+      (!m.ocrText || m.ocrText.trim() === "")
+    );
+    
+    return {
+      count: failed.length,
+      mediaIds: failed.map((m) => m._id),
+    };
+  },
+});
+
+/**
+ * Reset OCR attempted flag for specific media files
+ * 
+ * Usage: Called to allow re-scanning of files that failed or need re-processing
+ * Args: mediaIds - array of media IDs to reset, or empty to reset all
+ */
+export const resetOcrAttempted = mutation({
+  args: {
+    mediaIds: v.optional(v.array(v.id("media"))),
+  },
+  handler: async (ctx, args) => {
+    if (args.mediaIds && args.mediaIds.length > 0) {
+      // Reset specific files
+      for (const id of args.mediaIds) {
+        await ctx.db.patch(id, { 
+          ocrAttempted: false,
+          ocrText: undefined,
+          updatedAt: Date.now(),
+        });
+      }
+      return { reset: args.mediaIds.length };
+    } else {
+      // Reset all files
+      const allMedia = await ctx.db.query("media").collect();
+      const ocrSupportedTypes = ["image", "gif", "video"];
+      const ocrSupported = allMedia.filter((m) => ocrSupportedTypes.includes(m.mediaType));
+      
+      for (const media of ocrSupported) {
+        await ctx.db.patch(media._id, { 
+          ocrAttempted: false,
+          ocrText: undefined,
+          updatedAt: Date.now(),
+        });
+      }
+      return { reset: ocrSupported.length };
+    }
+  },
+});
+
+/**
+ * Get media files with WebP or WebM extensions that need conversion
+ * 
+ * Usage: Called by admin route to find files needing format conversion
+ * Returns: Array of media objects with .webp or .webm extensions
+ */
+export const getWebPWebMFiles = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const allMedia = await ctx.db.query("media").collect();
+    
+    // Filter to WebP and WebM files
+    let results = allMedia.filter((m) => {
+      const ext = m.extension?.toLowerCase();
+      return ext === "webp" || ext === "webm";
+    });
+    
+    // Apply limit
+    if (args.limit && args.limit > 0) {
+      results = results.slice(0, args.limit);
+    }
+    
+    return results;
+  },
+});
+
+/**
+ * Update media file info after format conversion
+ * 
+ * Usage: Called after converting WebP/WebM files to update all file-related fields
+ * Returns: Nothing (void)
+ */
+export const updateFileInfo = mutation({
+  args: {
+    id: v.id("media"),
+    filename: v.string(),
+    filepath: v.string(),
+    mimeType: v.string(),
+    extension: v.string(),
+    mediaType: mediaTypeValidator,
+    size: v.number(),
+    fileHash: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { id, ...updates } = args;
+    
+    await ctx.db.patch(id, {
+      ...updates,
+      updatedAt: Date.now(),
+    });
   },
 });
 

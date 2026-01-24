@@ -654,3 +654,94 @@ streamRoutes.get("/thumbnail/:id", async (c) => {
     return c.json({ error: "Failed to get thumbnail" }, 500);
   }
 });
+
+/**
+ * GET /api/cover/:id
+ * 
+ * Get a cover image for a media file.
+ * Priority:
+ * 1. Custom uploaded cover (customCover field)
+ * 2. External cover URL (coverUrl field from TMDB, MusicBrainz, etc.)
+ * 3. Thumbnail (for videos)
+ * 4. 404 if no cover available
+ */
+streamRoutes.get("/cover/:id", async (c) => {
+  try {
+    const convex = c.get("convex") as ConvexHttpClient;
+    const id = c.req.param("id");
+    
+    // Get media information from database
+    const media = await convex.query(api.media.getById, { id: id as any });
+    
+    if (!media) {
+      return c.json({ error: "Media not found" }, 404);
+    }
+    
+    // Priority 1: Custom uploaded cover
+    if (media.customCover && existsSync(media.customCover)) {
+      const fileStats = await stat(media.customCover);
+      const stream = createReadStream(media.customCover);
+      
+      // Determine content type from extension
+      const ext = media.customCover.toLowerCase();
+      let contentType = "image/jpeg";
+      if (ext.endsWith(".png")) contentType = "image/png";
+      else if (ext.endsWith(".webp")) contentType = "image/webp";
+      else if (ext.endsWith(".gif")) contentType = "image/gif";
+      
+      return new Response(stream as any, {
+        status: 200,
+        headers: {
+          "Content-Length": fileStats.size.toString(),
+          "Content-Type": contentType,
+          "Cache-Control": "public, max-age=86400", // 1 day cache (might be updated)
+        },
+      });
+    }
+    
+    // Priority 2: External cover URL - redirect to it
+    if (media.coverUrl) {
+      return c.redirect(media.coverUrl);
+    }
+    
+    // Priority 3: Use thumbnail for videos
+    if (media.mediaType === "video" && media.thumbnail && existsSync(media.thumbnail)) {
+      const fileStats = await stat(media.thumbnail);
+      const stream = createReadStream(media.thumbnail);
+      
+      return new Response(stream as any, {
+        status: 200,
+        headers: {
+          "Content-Length": fileStats.size.toString(),
+          "Content-Type": "image/jpeg",
+          "Cache-Control": "public, max-age=31536000",
+        },
+      });
+    }
+    
+    // For images and gifs, the media itself can be the "cover"
+    if (media.mediaType === "image" || media.mediaType === "gif") {
+      if (!existsSync(media.filepath)) {
+        return c.json({ error: "File not found" }, 404);
+      }
+      
+      const fileStats = await stat(media.filepath);
+      const stream = createReadStream(media.filepath);
+      
+      return new Response(stream as any, {
+        status: 200,
+        headers: {
+          "Content-Length": fileStats.size.toString(),
+          "Content-Type": media.mimeType,
+          "Cache-Control": "public, max-age=31536000",
+        },
+      });
+    }
+    
+    // No cover available
+    return c.json({ error: "No cover available" }, 404);
+  } catch (error) {
+    console.error("Error getting cover:", error);
+    return c.json({ error: "Failed to get cover" }, 500);
+  }
+});

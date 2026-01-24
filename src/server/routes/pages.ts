@@ -533,12 +533,12 @@ pageRoutes.get("/", async (c) => {
   try {
     const convex = c.get("convex");
     const auth = getAuth(c);
-    const search = c.req.query("search");
-    const mediaType = c.req.query("type") as "video" | "audio" | "image" | "gif" | "document" | "other" | undefined;
-    const extension = c.req.query("ext");
-    const tagId = c.req.query("tag");
-    const sortField = c.req.query("sort") as "title" | "createdAt" | "size" | "duration" | "year" | undefined;
-    const sortDirection = c.req.query("dir") as "asc" | "desc" | undefined;
+    const search = c.req.query("search") || undefined;
+    const mediaType = (c.req.query("type") || undefined) as "video" | "audio" | "image" | "gif" | "document" | "other" | undefined;
+    const extension = c.req.query("ext") || undefined;
+    const tagId = c.req.query("tag") || undefined;
+    const sortField = (c.req.query("sort") || undefined) as "title" | "createdAt" | "size" | "duration" | "year" | undefined;
+    const sortDirection = (c.req.query("dir") || undefined) as "asc" | "desc" | undefined;
     
     // Get available tags for filtering
     let tags: Array<{ _id: string; name: string; color?: string; isNsfw?: boolean }> = [];
@@ -1155,11 +1155,51 @@ pageRoutes.get("/watch/:id", async (c) => {
             
             <!-- Info Sidebar -->
             <div class="space-y-4">
-              ${media.coverUrl && isVideo ? `
-                <div class="bg-gray-800 rounded-lg overflow-hidden">
-                  <img src="${media.coverUrl}" alt="${media.title}" class="w-full object-cover">
+              <!-- Cover Image Section -->
+              <div class="bg-gray-800 rounded-lg overflow-hidden">
+                <div class="relative group">
+                  ${media.customCover || media.coverUrl ? `
+                    <img id="cover-image" 
+                         src="/api/cover/${media._id}" 
+                         alt="${media.title}" 
+                         class="w-full object-cover"
+                         onerror="this.style.display='none'; document.getElementById('cover-placeholder').style.display='flex';">
+                    <div id="cover-placeholder" class="hidden w-full h-48 bg-gray-700 items-center justify-center">
+                      <span class="text-gray-500 text-4xl">🎬</span>
+                    </div>
+                  ` : `
+                    <div id="cover-placeholder" class="w-full h-48 bg-gray-700 flex items-center justify-center">
+                      <span class="text-gray-500 text-4xl">${isVideo ? '🎬' : isAudio ? '🎵' : '📄'}</span>
+                    </div>
+                  `}
+                  <!-- Overlay with upload/delete buttons -->
+                  <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                    <label class="cursor-pointer bg-purple-600 hover:bg-purple-700 px-3 py-2 rounded-lg text-sm transition-colors">
+                      📷 Upload Cover
+                      <input type="file" 
+                             id="cover-upload-input" 
+                             accept="image/jpeg,image/png,image/webp,image/gif"
+                             class="hidden"
+                             onchange="uploadCover(this.files[0])">
+                    </label>
+                    ${media.customCover ? `
+                      <button onclick="deleteCover()" 
+                              class="bg-red-600 hover:bg-red-700 px-3 py-2 rounded-lg text-sm transition-colors">
+                        🗑️ Remove
+                      </button>
+                    ` : ''}
+                  </div>
                 </div>
-              ` : ''}
+                ${media.customCover ? `
+                  <div class="px-3 py-2 text-xs text-gray-400 border-t border-gray-700">
+                    ✨ Custom cover
+                  </div>
+                ` : media.coverUrl ? `
+                  <div class="px-3 py-2 text-xs text-gray-400 border-t border-gray-700">
+                    🌐 From ${media.externalSource || 'external source'}
+                  </div>
+                ` : ''}
+              </div>
               
               <div class="bg-gray-800 rounded-lg p-4 space-y-3">
                 <h3 class="font-medium text-gray-300">File Info</h3>
@@ -1280,6 +1320,14 @@ pageRoutes.get("/watch/:id", async (c) => {
                            value="${(media.album || '').replace(/"/g, '&quot;')}"
                            class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500">
                   </div>
+                  <div>
+                    <label class="block text-xs text-gray-400 mb-1">OCR Text <span class="text-gray-500">(extracted text for search)</span></label>
+                    <textarea id="edit-ocrtext" 
+                              rows="4"
+                              placeholder="Text extracted from images/videos for search..."
+                              class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none font-mono">${(media.ocrText || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                    <p class="text-xs text-gray-500 mt-1">${media.ocrText ? `${media.ocrText.length} characters` : 'No OCR text'} ${media.ocrAttempted ? '• OCR attempted' : ''}</p>
+                  </div>
                   <div class="flex gap-2 pt-2">
                     <button type="button" onclick="cancelEdit()" class="flex-1 bg-gray-600 hover:bg-gray-700 px-3 py-2 rounded text-sm transition-colors">
                       Cancel
@@ -1293,7 +1341,13 @@ pageRoutes.get("/watch/:id", async (c) => {
                   ${media.description ? `<p class="text-gray-400"><span class="text-gray-500">Description:</span> ${media.description.substring(0, 100)}${media.description.length > 100 ? '...' : ''}</p>` : ''}
                   ${media.artist ? `<p class="text-gray-400"><span class="text-gray-500">Artist:</span> ${media.artist}</p>` : ''}
                   ${media.album ? `<p class="text-gray-400"><span class="text-gray-500">Album:</span> ${media.album}</p>` : ''}
-                  ${!media.description && !media.artist && !media.album ? '<p class="text-gray-500">No custom metadata</p>' : ''}
+                  ${media.ocrText ? `
+                    <div class="mt-2 pt-2 border-t border-gray-700">
+                      <p class="text-gray-500 text-xs mb-1">🔍 OCR Text (${media.ocrText.length} chars):</p>
+                      <p class="text-gray-400 text-xs font-mono bg-gray-700/50 rounded p-2 max-h-20 overflow-y-auto">${media.ocrText.substring(0, 200).replace(/</g, '&lt;').replace(/>/g, '&gt;')}${media.ocrText.length > 200 ? '...' : ''}</p>
+                    </div>
+                  ` : ''}
+                  ${!media.description && !media.artist && !media.album && !media.ocrText ? '<p class="text-gray-500">No custom metadata</p>' : ''}
                 </div>
               </div>
             </div>
@@ -1831,6 +1885,7 @@ pageRoutes.get("/watch/:id", async (c) => {
             const genre = document.getElementById("edit-genre").value.trim() || undefined;
             const artist = document.getElementById("edit-artist").value.trim() || undefined;
             const album = document.getElementById("edit-album").value.trim() || undefined;
+            const ocrText = document.getElementById("edit-ocrtext").value.trim() || undefined;
             
             if (!title) {
               ToastManager.warning("Title is required");
@@ -1852,7 +1907,8 @@ pageRoutes.get("/watch/:id", async (c) => {
                   year,
                   genre,
                   artist,
-                  album
+                  album,
+                  ocrText
                 })
               });
               
@@ -1871,6 +1927,78 @@ pageRoutes.get("/watch/:id", async (c) => {
               submitBtn.textContent = "Save";
             }
           });
+          
+          // Cover image upload
+          async function uploadCover(file) {
+            if (!file) return;
+            
+            // Validate file type
+            const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+            if (!validTypes.includes(file.type)) {
+              ToastManager.error("Invalid file type. Please upload a JPG, PNG, WebP, or GIF image.");
+              return;
+            }
+            
+            // Validate file size (10MB max)
+            if (file.size > 10 * 1024 * 1024) {
+              ToastManager.error("File too large. Maximum size is 10MB.");
+              return;
+            }
+            
+            ToastManager.info("Uploading cover...");
+            
+            const formData = new FormData();
+            formData.append("file", file);
+            
+            try {
+              const res = await fetch("/api/upload/cover/" + mediaId, {
+                method: "POST",
+                body: formData
+              });
+              
+              const data = await res.json();
+              
+              if (data.success) {
+                ToastManager.success("Cover uploaded successfully!");
+                setTimeout(() => window.location.reload(), 1000);
+              } else {
+                ToastManager.error("Failed to upload cover: " + data.error);
+              }
+            } catch (err) {
+              ToastManager.error("Failed to upload cover: " + err.message);
+            }
+            
+            // Reset file input
+            document.getElementById("cover-upload-input").value = "";
+          }
+          
+          // Delete custom cover
+          async function deleteCover() {
+            const confirmed = await ConfirmModal.show({
+              title: "Remove Cover",
+              message: "Are you sure you want to remove the custom cover? The media will fall back to showing the external cover (if available) or no cover.",
+              confirmText: "Remove",
+              type: "warning"
+            });
+            if (!confirmed) return;
+            
+            try {
+              const res = await fetch("/api/upload/cover/" + mediaId, {
+                method: "DELETE"
+              });
+              
+              const data = await res.json();
+              
+              if (data.success) {
+                ToastManager.success("Cover removed successfully!");
+                setTimeout(() => window.location.reload(), 1000);
+              } else {
+                ToastManager.error("Failed to remove cover: " + data.error);
+              }
+            } catch (err) {
+              ToastManager.error("Failed to remove cover: " + err.message);
+            }
+          }
         </script>
         ${notificationSystem()}
       </body>
@@ -1944,6 +2072,8 @@ pageRoutes.get("/admin", async (c) => {
     // Get stats
     const mediaStats = await convex.query(api.media.getStats, {});
     const cacheStats = await convex.query(api.cache.getStats, {});
+    const ocrStats = await convex.query(api.media.getOCRStats, {});
+    const failedOCR = await convex.query(api.media.getFailedOCR, {});
     
     // Use auth.user for navbar to ensure correct role is displayed
     const navUser = auth.user ? { username: auth.user.username, role: auth.user.role } : undefined;
@@ -2030,19 +2160,71 @@ pageRoutes.get("/admin", async (c) => {
             <!-- Metadata Settings -->
             <section class="bg-gray-800 rounded-lg p-6">
               <h2 class="text-xl font-bold mb-4">📊 Metadata Settings</h2>
-              <div class="space-y-4">
+              <div class="space-y-6">
+                <!-- TMDB API Key -->
                 <div>
                   <label class="block text-sm font-medium text-gray-300 mb-2">
-                    TMDB API Key
+                    🎬 TMDB API Key (Movies & TV Shows)
                   </label>
-                  <input type="password" 
-                         name="tmdb_api_key" 
-                         placeholder="Enter TMDB API key"
-                         class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500">
-                  <p class="text-gray-500 text-sm mt-1">Get your API key from <a href="https://www.themoviedb.org/settings/api" target="_blank" class="text-purple-400 hover:text-purple-300">themoviedb.org</a></p>
+                  <div class="flex gap-2">
+                    <input type="password" 
+                           id="tmdb_api_key_input"
+                           name="tmdb_api_key" 
+                           placeholder="Enter TMDB API key"
+                           value="${settings.tmdb_api_key?.value || ""}"
+                           class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500">
+                    <button type="button" 
+                            onclick="testTmdbApi()"
+                            class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors text-sm whitespace-nowrap">
+                      Test & Save
+                    </button>
+                  </div>
+                  <p class="text-gray-500 text-sm mt-1">Get your API key from <a href="https://www.themoviedb.org/settings/api" target="_blank" class="text-purple-400 hover:text-purple-300">themoviedb.org</a>. Tests the key and saves it if valid.</p>
                 </div>
-                <div id="metadataStatus" class="text-sm">
-                  <!-- Will be populated by JavaScript -->
+                
+                <!-- Metadata Provider Status -->
+                <div class="border-t border-gray-700 pt-4">
+                  <h3 class="text-sm font-medium text-gray-300 mb-3">Provider Status</h3>
+                  <div id="metadataStatus" class="space-y-2 text-sm">
+                    <!-- Will be populated by JavaScript -->
+                    <div class="animate-pulse">
+                      <div class="h-8 bg-gray-700 rounded mb-2"></div>
+                      <div class="h-8 bg-gray-700 rounded mb-2"></div>
+                      <div class="h-8 bg-gray-700 rounded"></div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Batch Metadata Fetch -->
+                <div class="border-t border-gray-700 pt-4">
+                  <h3 class="text-sm font-medium text-gray-300 mb-3">Batch Operations</h3>
+                  <div class="flex gap-2 flex-wrap">
+                    <button type="button" 
+                            onclick="batchFetchMetadata()"
+                            class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition-colors text-sm">
+                      📥 Fetch Missing Metadata
+                    </button>
+                  </div>
+                  <p class="text-gray-500 text-sm mt-2">Automatically fetch metadata for media items that don't have any. Processes up to 20 items at a time.</p>
+                </div>
+                
+                <!-- Provider Info -->
+                <div class="border-t border-gray-700 pt-4">
+                  <h3 class="text-sm font-medium text-gray-300 mb-3">Available Providers</h3>
+                  <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                    <div class="bg-gray-700/50 rounded-lg p-3">
+                      <div class="font-medium text-white mb-1">🎬 TMDB</div>
+                      <p class="text-gray-400 text-xs">Movies & TV shows. Requires API key.</p>
+                    </div>
+                    <div class="bg-gray-700/50 rounded-lg p-3">
+                      <div class="font-medium text-white mb-1">🎵 MusicBrainz</div>
+                      <p class="text-gray-400 text-xs">Music metadata & cover art. No API key needed.</p>
+                    </div>
+                    <div class="bg-gray-700/50 rounded-lg p-3">
+                      <div class="font-medium text-white mb-1">📚 Open Library</div>
+                      <p class="text-gray-400 text-xs">Book metadata & covers. No API key needed.</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>
@@ -2196,6 +2378,55 @@ pageRoutes.get("/admin", async (c) => {
               </div>
             </section>
             
+            <!-- OCR Processing -->
+            <section class="bg-gray-800 rounded-lg p-6">
+              <h2 class="text-xl font-bold mb-4">🔍 OCR Text Search</h2>
+              <p class="text-gray-400 mb-4">Extract text from images, GIFs, and videos to make them searchable by their content.</p>
+              
+              <!-- OCR Stats -->
+              <div class="grid grid-cols-4 gap-4 mb-4">
+                <div class="bg-gray-700/50 rounded-lg p-4 text-center">
+                  <p class="text-2xl font-bold text-green-400">${ocrStats.withOCR}</p>
+                  <p class="text-gray-400 text-sm">With OCR</p>
+                </div>
+                <div class="bg-gray-700/50 rounded-lg p-4 text-center">
+                  <p class="text-2xl font-bold text-yellow-400" id="ocrWithoutCount">${ocrStats.withoutOCR}</p>
+                  <p class="text-gray-400 text-sm">Need OCR</p>
+                </div>
+                <div class="bg-gray-700/50 rounded-lg p-4 text-center">
+                  <p class="text-2xl font-bold text-red-400" id="ocrFailedCount">${failedOCR.count}</p>
+                  <p class="text-gray-400 text-sm">Failed</p>
+                </div>
+                <div class="bg-gray-700/50 rounded-lg p-4 text-center">
+                  <p class="text-2xl font-bold text-purple-400">${ocrStats.percentage}%</p>
+                  <p class="text-gray-400 text-sm">Complete</p>
+                </div>
+              </div>
+              
+              <div class="flex flex-wrap items-center gap-4">
+                <button type="button" 
+                        onclick="runOCRProcessing()"
+                        id="ocrProcessBtn"
+                        ${ocrStats.withoutOCR === 0 ? 'disabled' : ''}
+                        class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors">
+                  🔍 Process Files Without OCR
+                </button>
+                <button type="button" 
+                        onclick="retryFailedOCR()"
+                        id="ocrRetryBtn"
+                        ${failedOCR.count === 0 ? 'disabled' : ''}
+                        class="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors">
+                  🔄 Retry Failed OCR (${failedOCR.count})
+                </button>
+                <span class="text-gray-500 text-sm">Processes up to 10 files at a time</span>
+              </div>
+              <div id="ocrStatus" class="mt-4 hidden">
+                <div class="bg-gray-700/50 rounded-lg p-4">
+                  <p class="text-gray-300" id="ocrStatusText">Processing...</p>
+                </div>
+              </div>
+            </section>
+            
             <!-- Save Button -->
             <div class="flex justify-end">
               <button type="submit" 
@@ -2215,18 +2446,149 @@ pageRoutes.get("/admin", async (c) => {
               
               const statusDiv = document.getElementById("metadataStatus");
               statusDiv.innerHTML = Object.entries(data).map(([key, info]) => \`
-                <div class="flex items-center justify-between py-2 border-b border-gray-700">
-                  <span class="text-gray-300">\${info.name}</span>
-                  <span class="\${info.configured ? 'text-green-400' : 'text-yellow-400'}">
-                    \${info.configured ? '✅ Configured' : '⚠️ Not configured'}
-                  </span>
+                <div class="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-700/50">
+                  <div class="flex items-center gap-2">
+                    <span class="\${info.configured ? 'text-green-400' : 'text-yellow-400'} text-lg">
+                      \${info.configured ? '✅' : '⚠️'}
+                    </span>
+                    <span class="text-gray-300">\${info.name}</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-gray-500 text-xs">\${info.types?.join(', ') || ''}</span>
+                    <span class="\${info.configured ? 'text-green-400' : 'text-yellow-400'} text-xs">
+                      \${info.configured ? 'Ready' : 'Not configured'}
+                    </span>
+                  </div>
                 </div>
               \`).join('');
             } catch (err) {
               console.error("Failed to load metadata status:", err);
+              document.getElementById("metadataStatus").innerHTML = '<p class="text-red-400">Failed to load status</p>';
             }
           }
           loadMetadataStatus();
+          
+          // Test TMDB API and save if successful
+          async function testTmdbApi() {
+            const apiKey = document.getElementById("tmdb_api_key_input").value;
+            
+            if (!apiKey) {
+              ToastManager.warning("Please enter a TMDB API key first");
+              return;
+            }
+            
+            ToastManager.info("Testing TMDB connection...");
+            
+            try {
+              // Test by searching for a known movie
+              const res = await fetch(\`https://api.themoviedb.org/3/movie/550?api_key=\${encodeURIComponent(apiKey)}\`);
+              
+              if (res.ok) {
+                const data = await res.json();
+                
+                // Save the API key since it's valid
+                const saveRes = await fetch("/api/admin/settings", {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ 
+                    settings: [{ key: "tmdb_api_key", value: apiKey }] 
+                  }),
+                });
+                
+                const saveData = await saveRes.json();
+                
+                if (saveData.success) {
+                  ToastManager.success(\`TMDB connected and saved! Test: "\${data.title}" (\${data.release_date?.slice(0,4) || 'N/A'})\`);
+                  // Refresh metadata status
+                  loadMetadataStatus();
+                } else {
+                  ToastManager.warning(\`TMDB works but failed to save: \${saveData.error}\`);
+                }
+              } else if (res.status === 401) {
+                ToastManager.error("Invalid API key. Please check your TMDB API key.");
+              } else {
+                ToastManager.error("TMDB API error: " + res.status);
+              }
+            } catch (err) {
+              ToastManager.error("Connection failed: " + err.message);
+            }
+          }
+          
+          // Metadata fetch state
+          let metadataFetchStopped = false;
+          
+          // Batch fetch metadata (continues until all done)
+          async function batchFetchMetadata() {
+            const btn = event.target;
+            const confirmed = await ConfirmModal.show({
+              title: "Fetch Missing Metadata",
+              message: "This will fetch metadata for all media items that don't have any metadata yet. The process will continue until complete. You can stop at any time.",
+              confirmText: "Start",
+              type: "info"
+            });
+            if (!confirmed) return;
+            
+            metadataFetchStopped = false;
+            const originalHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Fetching... <button type="button" onclick="stopMetadataFetch(event)" class="ml-2 bg-red-600 hover:bg-red-700 px-2 py-0.5 rounded text-xs">Stop</button>';
+            
+            let totalSuccess = 0;
+            let totalFailed = 0;
+            let totalSkipped = 0;
+            let batchCount = 0;
+            
+            while (!metadataFetchStopped) {
+              batchCount++;
+              ToastManager.info(\`Fetching batch \${batchCount}... (Success: \${totalSuccess}, Failed: \${totalFailed})\`);
+              
+              try {
+                const res = await fetch("/api/metadata/batch-fetch", { method: "POST" });
+                const data = await res.json();
+                
+                if (data.success) {
+                  const r = data.results;
+                  
+                  if (r.total === 0) {
+                    // No more items to process
+                    break;
+                  }
+                  
+                  totalSuccess += r.success;
+                  totalFailed += r.failed;
+                  totalSkipped += r.skipped;
+                  
+                  // If all items in batch were skipped, we might be done with fetchable items
+                  if (r.success === 0 && r.failed === 0 && r.skipped === r.total) {
+                    // Only skipped items left, stop processing
+                    break;
+                  }
+                } else {
+                  ToastManager.error("Batch failed: " + data.error);
+                  totalFailed++;
+                }
+              } catch (err) {
+                ToastManager.error("Batch error: " + err.message);
+                totalFailed++;
+              }
+            }
+            
+            // Final status
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+            
+            if (metadataFetchStopped) {
+              ToastManager.info(\`Metadata fetch stopped. Success: \${totalSuccess}, Failed: \${totalFailed}, Skipped: \${totalSkipped}\`);
+            } else {
+              ToastManager.success(\`Metadata fetch complete! Success: \${totalSuccess}, Failed: \${totalFailed}, Skipped: \${totalSkipped}\`);
+            }
+          }
+          
+          function stopMetadataFetch(event) {
+            event.stopPropagation();
+            metadataFetchStopped = true;
+            ToastManager.info("Stopping after current batch...");
+          }
           
           // Save settings
           document.getElementById("settingsForm").addEventListener("submit", async (e) => {
@@ -2344,6 +2706,136 @@ pageRoutes.get("/admin", async (c) => {
               }
             } catch (err) {
               ToastManager.error("Cleanup failed: " + err.message);
+            }
+          }
+          
+          // OCR processing state
+          let ocrProcessingStopped = false;
+          
+          // Run OCR processing on files without OCR text (continues until all done)
+          async function runOCRProcessing() {
+            const btn = document.getElementById("ocrProcessBtn");
+            const statusDiv = document.getElementById("ocrStatus");
+            const statusText = document.getElementById("ocrStatusText");
+            
+            ocrProcessingStopped = false;
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Processing... <button type="button" onclick="stopOCRProcessing(event)" class="ml-2 bg-red-600 hover:bg-red-700 px-2 py-0.5 rounded text-xs">Stop</button>';
+            statusDiv.classList.remove("hidden");
+            
+            let totalProcessed = 0;
+            let totalFailed = 0;
+            let batchCount = 0;
+            
+            while (!ocrProcessingStopped) {
+              batchCount++;
+              statusText.textContent = \`Running OCR batch \${batchCount}... Processed so far: \${totalProcessed}, Failed: \${totalFailed}\`;
+              
+              try {
+                const res = await fetch("/api/admin/ocr/process", { 
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ limit: 10 })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                  const result = data.data;
+                  
+                  if (result.processed === 0 && result.failed === 0) {
+                    // No more files to process
+                    break;
+                  }
+                  
+                  totalProcessed += result.processed;
+                  totalFailed += result.failed;
+                  
+                  // Update the count display
+                  const countEl = document.getElementById("ocrWithoutCount");
+                  const newCount = parseInt(countEl.textContent) - result.processed;
+                  countEl.textContent = Math.max(0, newCount);
+                  
+                  if (newCount <= 0) {
+                    // All done
+                    break;
+                  }
+                } else {
+                  ToastManager.error("OCR batch failed: " + data.error);
+                  totalFailed++;
+                  // Continue with next batch despite error
+                }
+              } catch (err) {
+                ToastManager.error("OCR batch error: " + err.message);
+                totalFailed++;
+                // Continue with next batch despite error
+              }
+            }
+            
+            // Final status
+            const countEl = document.getElementById("ocrWithoutCount");
+            const remaining = parseInt(countEl.textContent) || 0;
+            
+            if (ocrProcessingStopped) {
+              ToastManager.info(\`OCR stopped. Processed: \${totalProcessed}, Failed: \${totalFailed}\`);
+              statusText.textContent = \`Stopped. Processed \${totalProcessed} files, \${totalFailed} failed. \${remaining} remaining.\`;
+              btn.disabled = remaining === 0;
+              btn.textContent = remaining > 0 ? "🔍 Continue Processing" : "✅ All Files Processed";
+            } else if (remaining === 0) {
+              ToastManager.success(\`OCR complete! Processed: \${totalProcessed}, Failed: \${totalFailed}\`);
+              statusText.textContent = "All supported media files now have OCR text!";
+              btn.textContent = "✅ All Files Processed";
+            } else {
+              ToastManager.success(\`OCR finished. Processed: \${totalProcessed}, Failed: \${totalFailed}\`);
+              statusText.textContent = \`Processed \${totalProcessed} files, \${totalFailed} failed. \${remaining} remaining.\`;
+              btn.disabled = false;
+              btn.textContent = "🔍 Process Remaining Files";
+            }
+          }
+          
+          function stopOCRProcessing(event) {
+            event.stopPropagation();
+            ocrProcessingStopped = true;
+            ToastManager.info("Stopping after current batch...");
+          }
+          
+          // Retry failed OCR items
+          async function retryFailedOCR() {
+            const btn = document.getElementById("ocrRetryBtn");
+            const failedCountEl = document.getElementById("ocrFailedCount");
+            const withoutCountEl = document.getElementById("ocrWithoutCount");
+            
+            btn.disabled = true;
+            btn.textContent = "⏳ Resetting...";
+            
+            try {
+              const res = await fetch("/api/admin/ocr/reset-failed", { method: "POST" });
+              const data = await res.json();
+              
+              if (data.success) {
+                const resetCount = data.data.reset;
+                ToastManager.success(\`Reset \${resetCount} failed items for re-processing\`);
+                
+                // Update the counts
+                failedCountEl.textContent = "0";
+                const currentWithout = parseInt(withoutCountEl.textContent) || 0;
+                withoutCountEl.textContent = currentWithout + resetCount;
+                
+                // Update buttons
+                btn.textContent = "🔄 Retry Failed OCR (0)";
+                
+                // Enable the process button since there are now items to process
+                const processBtn = document.getElementById("ocrProcessBtn");
+                processBtn.disabled = false;
+                processBtn.textContent = "🔍 Process Files Without OCR";
+              } else {
+                ToastManager.error("Reset failed: " + data.error);
+                btn.disabled = false;
+                btn.textContent = \`🔄 Retry Failed OCR (\${failedCountEl.textContent})\`;
+              }
+            } catch (err) {
+              ToastManager.error("Reset failed: " + err.message);
+              btn.disabled = false;
+              btn.textContent = \`🔄 Retry Failed OCR (\${failedCountEl.textContent})\`;
             }
           }
         </script>

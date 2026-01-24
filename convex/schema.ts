@@ -97,6 +97,7 @@ export default defineSchema({
    * - duration: Media length in seconds (for video/audio)
    * - thumbnail: Path to generated thumbnail image
    * - coverUrl: URL to cover image from external API
+   * - customCover: Path to user-uploaded custom cover image
    * - r2Key: Key in R2 bucket if backed up
    * - r2BackedUp: Whether the file has been backed up to R2
    * 
@@ -131,6 +132,7 @@ export default defineSchema({
     duration: v.optional(v.number()),
     thumbnail: v.optional(v.string()),
     coverUrl: v.optional(v.string()),
+    customCover: v.optional(v.string()), // Path to custom uploaded cover image
     r2Key: v.optional(v.string()),
     r2BackedUp: v.boolean(),
     // External metadata
@@ -142,6 +144,10 @@ export default defineSchema({
     artist: v.optional(v.string()),
     album: v.optional(v.string()),
     metadataFetchedAt: v.optional(v.number()),
+    // OCR-extracted text for search
+    ocrText: v.optional(v.string()),
+    // Whether OCR has been attempted (prevents re-scanning failed files)
+    ocrAttempted: v.optional(v.boolean()),
     // Tags - array of tag IDs
     tags: v.optional(v.array(v.id("tags"))),
     // File hash for duplicate detection

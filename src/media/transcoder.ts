@@ -453,3 +453,343 @@ export async function needsTranscoding(inputPath: string): Promise<{
     };
   }
 }
+
+/**
+ * Check if a WebP image is animated
+ * 
+ * Checks the file bytes directly for ANIM/ANMF chunks which indicate animation.
+ * This is more reliable than FFprobe since FFmpeg's webp decoder has limited
+ * support for animated WebP files.
+ * 
+ * WebP file structure:
+ * - Bytes 0-3: "RIFF"
+ * - Bytes 8-11: "WEBP"
+ * - Extended format with animation contains "ANIM" and "ANMF" chunks
+ * 
+ * @param inputPath - Path to the WebP file
+ * @returns true if animated, false if static
+ */
+export async function isAnimatedWebP(inputPath: string): Promise<boolean> {
+  try {
+    // Read the file
+    const fileBuffer = await Bun.file(inputPath).arrayBuffer();
+    const buffer = Buffer.from(fileBuffer);
+    
+    // Check for RIFF header
+    if (buffer.length < 12) return false;
+    const riff = buffer.slice(0, 4).toString('ascii');
+    const webp = buffer.slice(8, 12).toString('ascii');
+    
+    if (riff !== 'RIFF' || webp !== 'WEBP') {
+      console.log(`[Transcoder] Not a valid WebP file: ${inputPath}`);
+      return false;
+    }
+    
+    // Search for ANIM or ANMF chunks in the file
+    // These chunks indicate an animated WebP
+    const fileStr = buffer.toString('binary');
+    const hasANIM = fileStr.includes('ANIM');
+    const hasANMF = fileStr.includes('ANMF');
+    
+    const isAnimated = hasANIM || hasANMF;
+    console.log(`[Transcoder] WebP animation check for ${inputPath}: ANIM=${hasANIM}, ANMF=${hasANMF}, isAnimated=${isAnimated}`);
+    
+    return isAnimated;
+  } catch (error) {
+    console.error(`[Transcoder] Error checking WebP animation: ${error}`);
+    return false;
+  }
+}
+
+/**
+ * Result of a file conversion operation
+ */
+export interface ConversionResult {
+  /** Path to the converted file */
+  outputPath: string;
+  /** Size of the converted file in bytes */
+  size: number;
+  /** New filename */
+  filename: string;
+  /** New extension (without dot) */
+  extension: string;
+  /** New MIME type */
+  mimeType: string;
+  /** Buffer containing the converted file data */
+  buffer: Buffer;
+}
+
+/**
+ * Convert a WebP image to PNG (for static images)
+ * 
+ * @param inputPath - Path to the WebP file
+ * @returns Conversion result with PNG data
+ */
+export async function convertWebPToPng(inputPath: string): Promise<ConversionResult> {
+  const inputBasename = basename(inputPath, ".webp");
+  const outputFilename = `${inputBasename}.png`;
+  const outputPath = join(dirname(inputPath), outputFilename);
+
+  return new Promise((resolve, reject) => {
+    const args = [
+      "-i", inputPath,
+      "-y",
+      outputPath,
+    ];
+
+    const ffmpeg = spawn("ffmpeg", args);
+    let stderr = "";
+
+    ffmpeg.stderr.on("data", (data) => {
+      stderr += data.toString();
+    });
+
+    ffmpeg.on("close", async (code) => {
+      if (code !== 0) {
+        reject(new Error(`WebP to PNG conversion failed: ${stderr}`));
+        return;
+      }
+
+      try {
+        const stats = await stat(outputPath);
+        const buffer = await Bun.file(outputPath).arrayBuffer();
+        
+        resolve({
+          outputPath,
+          size: stats.size,
+          filename: outputFilename,
+          extension: "png",
+          mimeType: "image/png",
+          buffer: Buffer.from(buffer),
+        });
+      } catch (error) {
+        reject(new Error(`Failed to read converted PNG: ${error}`));
+      }
+    });
+
+    ffmpeg.on("error", (error) => {
+      reject(new Error(`Failed to start FFmpeg: ${error.message}`));
+    });
+  });
+}
+
+/**
+ * Convert a WebP image to GIF (for animated images)
+ * 
+ * Tries multiple approaches in order:
+ * 1. ImageMagick's convert (best animated WebP support)
+ * 2. FFmpeg with libwebp_anim demuxer
+ * 3. FFmpeg standard approach
+ * 
+ * @param inputPath - Path to the animated WebP file
+ * @returns Conversion result with GIF data
+ */
+export async function convertWebPToGif(inputPath: string): Promise<ConversionResult> {
+  const inputBasename = basename(inputPath, ".webp");
+  const outputFilename = `${inputBasename}.gif`;
+  const outputPath = join(dirname(inputPath), outputFilename);
+
+  // Try ImageMagick convert first (best animated WebP support)
+  const tryImageMagick = (): Promise<ConversionResult> => {
+    return new Promise((resolve, reject) => {
+      // ImageMagick convert command for animated WebP to GIF
+      const args = [
+        inputPath,
+        "-coalesce",  // Ensure proper frame handling
+        outputPath,
+      ];
+
+      const convert = spawn("convert", args);
+      let stderr = "";
+
+      convert.stderr.on("data", (data) => {
+        stderr += data.toString();
+      });
+
+      convert.on("close", async (code) => {
+        if (code !== 0) {
+          reject(new Error(`ImageMagick conversion failed: ${stderr}`));
+          return;
+        }
+
+        try {
+          const stats = await stat(outputPath);
+          const buffer = await Bun.file(outputPath).arrayBuffer();
+          
+          resolve({
+            outputPath,
+            size: stats.size,
+            filename: outputFilename,
+            extension: "gif",
+            mimeType: "image/gif",
+            buffer: Buffer.from(buffer),
+          });
+        } catch (error) {
+          reject(new Error(`Failed to read converted GIF: ${error}`));
+        }
+      });
+
+      convert.on("error", (error) => {
+        reject(new Error(`Failed to start ImageMagick: ${error.message}`));
+      });
+    });
+  };
+
+  // Try FFmpeg conversion
+  const tryFFmpeg = (useLibwebpAnim: boolean): Promise<ConversionResult> => {
+    return new Promise((resolve, reject) => {
+      const args = useLibwebpAnim
+        ? [
+            "-f", "libwebp_anim",
+            "-i", inputPath,
+            "-vf", "split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse",
+            "-loop", "0",
+            "-y",
+            outputPath,
+          ]
+        : [
+            "-i", inputPath,
+            "-vf", "split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse",
+            "-loop", "0",
+            "-y",
+            outputPath,
+          ];
+
+      const ffmpeg = spawn("ffmpeg", args);
+      let stderr = "";
+
+      ffmpeg.stderr.on("data", (data) => {
+        stderr += data.toString();
+      });
+
+      ffmpeg.on("close", async (code) => {
+        if (code !== 0) {
+          reject(new Error(`FFmpeg conversion failed: ${stderr}`));
+          return;
+        }
+
+        try {
+          const stats = await stat(outputPath);
+          const buffer = await Bun.file(outputPath).arrayBuffer();
+          
+          resolve({
+            outputPath,
+            size: stats.size,
+            filename: outputFilename,
+            extension: "gif",
+            mimeType: "image/gif",
+            buffer: Buffer.from(buffer),
+          });
+        } catch (error) {
+          reject(new Error(`Failed to read converted GIF: ${error}`));
+        }
+      });
+
+      ffmpeg.on("error", (error) => {
+        reject(new Error(`Failed to start FFmpeg: ${error.message}`));
+      });
+    });
+  };
+
+  // Try methods in order of reliability for animated WebP
+  
+  // 1. Try ImageMagick (best support for animated WebP)
+  try {
+    console.log(`[Transcoder] Trying animated WebP conversion with ImageMagick...`);
+    return await tryImageMagick();
+  } catch (error) {
+    console.log(`[Transcoder] ImageMagick failed: ${error}`);
+  }
+
+  // 2. Try FFmpeg with libwebp_anim demuxer
+  try {
+    console.log(`[Transcoder] Trying animated WebP conversion with FFmpeg libwebp_anim...`);
+    return await tryFFmpeg(true);
+  } catch (error) {
+    console.log(`[Transcoder] FFmpeg libwebp_anim failed: ${error}`);
+  }
+
+  // 3. Try FFmpeg standard approach (last resort)
+  console.log(`[Transcoder] Trying animated WebP conversion with FFmpeg standard...`);
+  return await tryFFmpeg(false);
+}
+
+/**
+ * Convert a WebM video to MP4
+ * 
+ * Uses H.264 video codec and AAC audio for maximum compatibility
+ * 
+ * @param inputPath - Path to the WebM file
+ * @returns Conversion result with MP4 data
+ */
+export async function convertWebMToMp4(inputPath: string): Promise<ConversionResult> {
+  const inputBasename = basename(inputPath, ".webm");
+  const outputFilename = `${inputBasename}.mp4`;
+  const outputPath = join(dirname(inputPath), outputFilename);
+
+  return new Promise((resolve, reject) => {
+    const args = [
+      "-i", inputPath,
+      "-c:v", "libx264",
+      "-c:a", "aac",
+      "-preset", "medium",
+      "-crf", "23",
+      "-movflags", "+faststart",
+      "-y",
+      outputPath,
+    ];
+
+    const ffmpeg = spawn("ffmpeg", args);
+    let stderr = "";
+
+    ffmpeg.stderr.on("data", (data) => {
+      stderr += data.toString();
+    });
+
+    ffmpeg.on("close", async (code) => {
+      if (code !== 0) {
+        reject(new Error(`WebM to MP4 conversion failed: ${stderr}`));
+        return;
+      }
+
+      try {
+        const stats = await stat(outputPath);
+        const buffer = await Bun.file(outputPath).arrayBuffer();
+        
+        resolve({
+          outputPath,
+          size: stats.size,
+          filename: outputFilename,
+          extension: "mp4",
+          mimeType: "video/mp4",
+          buffer: Buffer.from(buffer),
+        });
+      } catch (error) {
+        reject(new Error(`Failed to read converted MP4: ${error}`));
+      }
+    });
+
+    ffmpeg.on("error", (error) => {
+      reject(new Error(`Failed to start FFmpeg: ${error.message}`));
+    });
+  });
+}
+
+/**
+ * Convert a WebP file to the appropriate format
+ * Static WebP -> PNG, Animated WebP -> GIF
+ * 
+ * @param inputPath - Path to the WebP file
+ * @returns Conversion result
+ */
+export async function convertWebP(inputPath: string): Promise<ConversionResult> {
+  const isAnimated = await isAnimatedWebP(inputPath);
+  
+  if (isAnimated) {
+    console.log(`[Transcoder] Converting animated WebP to GIF: ${inputPath}`);
+    return convertWebPToGif(inputPath);
+  } else {
+    console.log(`[Transcoder] Converting static WebP to PNG: ${inputPath}`);
+    return convertWebPToPng(inputPath);
+  }
+}

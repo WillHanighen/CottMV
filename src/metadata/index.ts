@@ -11,7 +11,7 @@
  * - Open Library for books/documents
  */
 
-import { createTMDBClient, type TMDBMetadata } from "./tmdb.js";
+import { createTMDBClient, createUnconfiguredTMDBClient, TMDBClient, type TMDBMetadata } from "./tmdb.js";
 import { createMusicBrainzClient, type MusicMetadata } from "./musicbrainz.js";
 import { createOpenLibraryClient, type BookMetadata } from "./openlibrary.js";
 import { parseFilename } from "../media/utils.js";
@@ -37,7 +37,7 @@ export interface MediaMetadata {
  * Metadata service for fetching external metadata
  */
 export class MetadataService {
-  private tmdb = createTMDBClient();
+  private tmdb: TMDBClient | null = createTMDBClient();
   private musicbrainz = createMusicBrainzClient();
   private openlibrary = createOpenLibraryClient();
   
@@ -45,7 +45,25 @@ export class MetadataService {
    * Check if TMDB is configured
    */
   isTMDBConfigured(): boolean {
-    return this.tmdb !== null;
+    return this.tmdb !== null && this.tmdb.hasApiKey();
+  }
+  
+  /**
+   * Configure TMDB with an API key
+   * This allows setting the API key from database settings
+   */
+  configureTMDB(apiKey: string | null | undefined): void {
+    if (apiKey && apiKey.trim() !== "") {
+      if (this.tmdb) {
+        this.tmdb.setApiKey(apiKey.trim());
+      } else {
+        this.tmdb = createTMDBClient(apiKey.trim());
+      }
+      console.log("[MetadataService] TMDB configured with API key from settings");
+    } else {
+      // If no valid key provided, try from environment
+      this.tmdb = createTMDBClient();
+    }
   }
   
   /**

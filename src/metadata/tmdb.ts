@@ -141,6 +141,20 @@ export class TMDBClient {
   }
   
   /**
+   * Update the API key
+   */
+  setApiKey(apiKey: string): void {
+    this.apiKey = apiKey;
+  }
+  
+  /**
+   * Get the current API key (for checking if configured)
+   */
+  hasApiKey(): boolean {
+    return !!this.apiKey && this.apiKey.trim() !== "";
+  }
+  
+  /**
    * Make a request to the TMDB API
    */
   private async request<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
@@ -158,6 +172,8 @@ export class TMDBClient {
     });
     
     if (!response.ok) {
+      const errorBody = await response.text().catch(() => "");
+      console.error(`TMDB API error: ${response.status} ${response.statusText}`, errorBody);
       throw new Error(`TMDB API error: ${response.status} ${response.statusText}`);
     }
     
@@ -264,18 +280,27 @@ export class TMDBClient {
       coverUrl: this.getImageUrl(details.poster_path, IMAGE_SIZES.poster.medium),
       backdropUrl: this.getImageUrl(details.backdrop_path, IMAGE_SIZES.backdrop.medium),
       rating: details.vote_average,
-      runtime: details.episode_run_time[0],
+      runtime: details.episode_run_time?.[0],
     };
   }
 }
 
 /**
- * Create a TMDB client from environment variable
+ * Create a TMDB client from environment variable or provided key
  */
-export function createTMDBClient(): TMDBClient | null {
-  const apiKey = process.env.TMDB_API_KEY;
-  if (!apiKey) {
+export function createTMDBClient(apiKey?: string): TMDBClient | null {
+  const key = apiKey || process.env.TMDB_API_KEY;
+  if (!key || key.trim() === "" || key === "your-tmdb-api-key") {
+    console.warn("[TMDB] API key not configured. Set TMDB_API_KEY environment variable or configure in settings.");
     return null;
   }
-  return new TMDBClient(apiKey);
+  console.log("[TMDB] Client initialized with API key");
+  return new TMDBClient(key.trim());
+}
+
+/**
+ * Create an unconfigured TMDB client that can be configured later
+ */
+export function createUnconfiguredTMDBClient(): TMDBClient {
+  return new TMDBClient("");
 }

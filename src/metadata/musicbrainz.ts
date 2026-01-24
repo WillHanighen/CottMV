@@ -166,6 +166,20 @@ export class MusicBrainzClient {
   }
   
   /**
+   * Get recording details with related data
+   */
+  async getRecording(id: string): Promise<MBRecording | null> {
+    try {
+      const result = await this.request<MBRecording>(`/recording/${id}`, {
+        inc: "artist-credits+releases",
+      });
+      return result;
+    } catch {
+      return null;
+    }
+  }
+  
+  /**
    * Search for releases (albums)
    */
   async searchReleases(query: string, artist?: string): Promise<MBRelease[]> {
@@ -180,6 +194,20 @@ export class MusicBrainzClient {
     });
     
     return result.releases || [];
+  }
+  
+  /**
+   * Get release details with related data
+   */
+  async getRelease(id: string): Promise<MBRelease | null> {
+    try {
+      const result = await this.request<MBRelease>(`/release/${id}`, {
+        inc: "artist-credits+release-groups",
+      });
+      return result;
+    } catch {
+      return null;
+    }
   }
   
   /**

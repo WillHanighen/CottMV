@@ -134,6 +134,11 @@ export const MEDIA_TYPE_FOLDERS: Record<MediaType, string> = {
 };
 
 /**
+ * Covers folder name
+ */
+export const COVERS_FOLDER = "covers";
+
+/**
  * Storage configuration
  */
 export interface StorageConfig {
@@ -194,6 +199,10 @@ export async function initializeStorage(baseDir: string = DEFAULT_MEDIA_DIR): Pr
       const folderPath = join(expandedPath, folder);
       await mkdir(folderPath, { recursive: true });
     }
+    
+    // Create covers folder
+    const coversPath = join(expandedPath, COVERS_FOLDER);
+    await mkdir(coversPath, { recursive: true });
     
     console.log(`[Storage] Initialized storage at ${expandedPath}`);
     return { success: true, expandedPath };
@@ -514,6 +523,116 @@ export async function listFiles(
   }
   
   return files;
+}
+
+/**
+ * Result of a cover save operation
+ */
+export interface CoverSaveResult {
+  /** Full path to the saved cover */
+  filepath: string;
+  /** Filename (without path) */
+  filename: string;
+  /** File size in bytes */
+  size: number;
+}
+
+/**
+ * Save a cover image for a media item
+ * Cover files are named with the media ID for easy lookup
+ *
+ * @param buffer - Image data buffer
+ * @param mediaId - ID of the media item this cover is for
+ * @param originalFilename - Original filename (for extension)
+ * @param baseDir - Base directory path (supports ~ and $HOME expansion)
+ * @returns Save result with file info
+ */
+export async function saveCover(
+  buffer: Buffer,
+  mediaId: string,
+  originalFilename: string,
+  baseDir: string = DEFAULT_MEDIA_DIR
+): Promise<CoverSaveResult> {
+  // Expand the path
+  const expandedBaseDir = expandPath(baseDir);
+  
+  // Ensure storage is initialized
+  if (!await isStorageInitialized(expandedBaseDir)) {
+    const initResult = await initializeStorage(expandedBaseDir);
+    if (!initResult.success) {
+      throw new Error(`Failed to initialize storage: ${initResult.error}`);
+    }
+  }
+  
+  // Ensure covers folder exists
+  const coversPath = join(expandedBaseDir, COVERS_FOLDER);
+  await mkdir(coversPath, { recursive: true });
+  
+  // Get extension from original filename
+  const ext = extname(originalFilename).toLowerCase() || ".jpg";
+  
+  // Create filename based on media ID (ensures one cover per media item)
+  const filename = `${mediaId}${ext}`;
+  const filepath = join(coversPath, filename);
+  
+  // Delete existing cover if any (to allow replacement)
+  try {
+    const entries = await readdir(coversPath);
+    for (const entry of entries) {
+      if (entry.startsWith(mediaId + ".")) {
+        await unlink(join(coversPath, entry));
+      }
+    }
+  } catch {
+    // Ignore errors when trying to delete old covers
+  }
+  
+  // Write the new cover file
+  try {
+    await writeFile(filepath, buffer);
+  } catch (error: any) {
+    throw new Error(`Failed to write cover file to ${filepath}: ${error.message}`);
+  }
+  
+  // Verify and get file stats
+  const fileStats = await stat(filepath);
+  
+  console.log(`[Storage] Saved cover: ${filepath} (${fileStats.size} bytes)`);
+  
+  return {
+    filepath,
+    filename,
+    size: fileStats.size,
+  };
+}
+
+/**
+ * Delete a cover image for a media item
+ *
+ * @param mediaId - ID of the media item
+ * @param baseDir - Base directory path
+ * @returns true if deleted, false if not found
+ */
+export async function deleteCover(
+  mediaId: string,
+  baseDir: string = DEFAULT_MEDIA_DIR
+): Promise<boolean> {
+  const expandedBaseDir = expandPath(baseDir);
+  const coversPath = join(expandedBaseDir, COVERS_FOLDER);
+  
+  try {
+    const entries = await readdir(coversPath);
+    for (const entry of entries) {
+      if (entry.startsWith(mediaId + ".")) {
+        await unlink(join(coversPath, entry));
+        console.log(`[Storage] Deleted cover: ${entry}`);
+        return true;
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 /**
